@@ -1,6 +1,7 @@
 import { createGame } from "../src/game/createGame";
 import { loadCards } from "../src/game/loadCards";
 import type { Card, GameState, StatCategory } from "../src/game/types";
+import { hashPassword, verifyPassword } from "../src/auth/passwords";
 
 const category: StatCategory = "attack";
 
@@ -42,6 +43,7 @@ async function main(): Promise<void> {
   const game = createGame(deck, deck, category);
   check(game, deck, before);
   console.log(JSON.stringify(game, null, 2));
+  console.log(check2);
 }
 
 main().catch((error: unknown) => {
