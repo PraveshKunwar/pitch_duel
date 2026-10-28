@@ -7,7 +7,8 @@
     "start": "tsx src/index.ts",
     "migrate": "tsx src/db/migrate.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "print-game": "tsx scripts/printGame.ts"
   },
   "dependencies": {
     "dotenv": "^16.6.1",
