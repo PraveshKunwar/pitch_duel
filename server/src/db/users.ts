@@ -5,7 +5,7 @@ export async function createUser(
   username: string,
   passwordHash: string,
 ) {
-  const text = `INSERT INTO users(username, email, password_hash)
+  const text = `INSERT INTO users(email, username, password_hash)
     VALUES ($1, $2, $3)
     RETURNING id, email, username, rating
     `;
@@ -14,13 +14,13 @@ export async function createUser(
 }
 
 export async function findUserByEmail(email: string) {
-  const text = `SELECT id, email, username, password_hash FROM users WHERE email = $1`;
+  const text = `SELECT id, email, username, password_hash, rating FROM users WHERE email = $1`;
   const res = await pool.query(text, [email]);
-  return res ? res.rows[0] : null;
+  return res.rows[0] ?? null;
 }
 
 export async function findUserById(id: string) {
-  const text = `SELECT id, email, username, rating, created_at FROM users WHERE id = $1`;
+  const text = `SELECT id, email, username, rating FROM users WHERE id = $1`;
   const res = await pool.query(text, [id]);
   return res.rows[0] ?? null;
 }

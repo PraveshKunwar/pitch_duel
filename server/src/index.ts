@@ -2,11 +2,18 @@ import Fastify from "fastify";
 import { env } from "./config";
 import { pool } from "./db/pool";
 import { redis } from "./db/redis";
+import { authRoutes } from "./http/auth";
 import { healthRoutes } from "./http/health";
+import jwt from "@fastify/jwt";
 
 const app = Fastify({ logger: true });
 
+app.register(jwt, {
+  secret: env.jwtSecret,
+  sign: { expiresIn: "15m" },
+});
 app.register(healthRoutes);
+app.register(authRoutes);
 
 const shutdown = async () => {
   await app.close();
