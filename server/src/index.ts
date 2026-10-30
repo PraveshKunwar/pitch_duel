@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import fastifyCookie from "@fastify/cookie";
 import { env } from "./config";
 import { pool } from "./db/pool";
 import { redis } from "./db/redis";
@@ -12,6 +13,7 @@ app.register(jwt, {
   secret: env.jwtSecret,
   sign: { expiresIn: "15m" },
 });
+app.register(fastifyCookie);
 app.register(healthRoutes);
 app.register(authRoutes);
 

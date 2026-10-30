@@ -1,6 +1,13 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { hashPassword, verifyPassword } from "../auth/passwords";
-import { createUser, findUserByEmail, findUserById } from "../db/users";
+import {
+  createRefreshToken,
+  createUser,
+  findUserByEmail,
+  findUserById,
+  revokeRefreshFamily,
+  rotateRefreshToken,
+} from "../db/users";
 
 type RegisterBody = {
   email: string;
@@ -30,6 +37,33 @@ const loginSchema = {
     },
   },
 };
+
+function setRefreshCookie(reply: FastifyReply, rawToken: string, expiresAt: Date) {
+  reply.setCookie("refresh_token", rawToken, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/auth",
+    expires: expiresAt,
+  });
+}
+
+function clearRefreshCookie(reply: FastifyReply) {
+  reply.clearCookie("refresh_token", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/auth",
+  });
+}
+
+function unauthorized(reply: FastifyReply) {
+  return reply.code(401).send({
+    statusCode: 401,
+    error: "Unauthorized",
+    message: "Unauthorized",
+  });
+}
 
 function invalidLogin(reply: FastifyReply) {
   return reply.code(401).send({
@@ -138,6 +172,8 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       return invalidLogin(reply);
     }
     const accessToken = await reply.jwtSign({ sub: String(user.id) });
+    const { rawToken, expiresAt } = await createRefreshToken(user.id);
+    setRefreshCookie(reply, rawToken, expiresAt);
     return reply.code(200).send({
       accessToken,
       user: {
@@ -147,5 +183,31 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         rating: user.rating,
       },
     });
+  });
+
+  app.post("/auth/refresh", async (request, reply) => {
+    const rawToken = request.cookies.refresh_token;
+    if (!rawToken) {
+      return unauthorized(reply);
+    }
+
+    const rotated = await rotateRefreshToken(rawToken);
+    if (rotated.status !== "ok") {
+      clearRefreshCookie(reply);
+      return unauthorized(reply);
+    }
+
+    const accessToken = await reply.jwtSign({ sub: rotated.userId });
+    setRefreshCookie(reply, rotated.rawToken, rotated.expiresAt);
+    return reply.code(200).send({ accessToken });
+  });
+
+  app.post("/auth/logout", async (request, reply) => {
+    const rawToken = request.cookies.refresh_token;
+    if (rawToken) {
+      await revokeRefreshFamily(rawToken);
+    }
+    clearRefreshCookie(reply);
+    return reply.code(204).send();
   });
 }
