@@ -1,11 +1,13 @@
 import Fastify from "fastify";
 import fastifyCookie from "@fastify/cookie";
+import jwt from "@fastify/jwt";
 import { env } from "./config";
 import { pool } from "./db/pool";
 import { redis } from "./db/redis";
 import { authRoutes } from "./http/auth";
 import { healthRoutes } from "./http/health";
-import jwt from "@fastify/jwt";
+import { createGameSessionStore } from "./ws/gameSessions";
+import { setupWebSocket } from "./ws/server";
 
 const app = Fastify({ logger: true });
 
@@ -16,6 +18,13 @@ app.register(jwt, {
 app.register(fastifyCookie);
 app.register(healthRoutes);
 app.register(authRoutes);
+
+const sessions = createGameSessionStore();
+setupWebSocket(app, { sessions });
+
+async function main(): Promise<void> {
+  await app.listen({ port: env.port, host: "0.0.0.0" });
+}
 
 const shutdown = async () => {
   await app.close();
@@ -29,7 +38,9 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   });
 }
 
-app.listen({ port: env.port, host: "0.0.0.0" }).catch((error: unknown) => {
+main().catch((error: unknown) => {
   app.log.error(error);
   process.exit(1);
 });
+
+export { app, sessions };

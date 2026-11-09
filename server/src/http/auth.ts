@@ -8,6 +8,7 @@ import {
   revokeRefreshFamily,
   rotateRefreshToken,
 } from "../db/users";
+import { createWebSocketTicket } from "../ws/tickets";
 
 type RegisterBody = {
   email: string;
@@ -210,4 +211,27 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     clearRefreshCookie(reply);
     return reply.code(204).send();
   });
+
+  app.post(
+    "/auth/ws-ticket",
+    {
+      onRequest: async (request, reply) => {
+        try {
+          await request.jwtVerify();
+        } catch (err) {
+          return reply.send(err);
+        }
+      },
+    },
+    async (request, reply) => {
+      const userId = request.user.sub;
+      const user = await findUserById(userId);
+      if (!user) {
+        return unauthorized(reply);
+      }
+
+      const ticket = await createWebSocketTicket(userId);
+      return reply.code(200).send({ ticket });
+    },
+  );
 }
