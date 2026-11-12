@@ -115,6 +115,7 @@ describe("websocket auth integration", () => {
   });
 
   it("authenticates from the ticket and supports two players in a game", async () => {
+    const startedAt = Date.now();
     const session = sessions.create({
       player1UserId: "p1",
       player2UserId: "p2",
@@ -137,6 +138,17 @@ describe("websocket auth integration", () => {
       gameId: session.id,
     });
     await expect(q1.next()).resolves.toMatchObject({ type: "game:state" });
+    const open = await q1.next();
+    expect(open).toMatchObject({
+      type: "game:roundStart",
+      gameId: session.id,
+      round: 1,
+      category: "attack",
+    });
+    if (open.type === "game:roundStart") {
+      expect(open.deadlineMs).toBeGreaterThanOrEqual(startedAt + 20_000);
+      expect(open.deadlineMs).toBeLessThan(startedAt + 25_000);
+    }
 
     ws1.send(JSON.stringify({ type: "not-a-message" }));
     await expect(q1.next()).resolves.toMatchObject({

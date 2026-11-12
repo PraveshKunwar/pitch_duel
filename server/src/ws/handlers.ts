@@ -1,17 +1,16 @@
-import { resolveCurrentRound } from "../game/resolveCurrentRound";
-import { submitPick } from "../game/submitPick";
 import type { ParsedClientMessage } from "./schemas";
+import { visiblePlayerState, type GameSessionStore } from "./gameSessions";
 import {
-  nextCategory,
-  visiblePlayerState,
-  type GameSessionStore,
-} from "./gameSessions";
+  createRoundCoordinator,
+  type RoundCoordinator,
+} from "./roundCoordinator";
 import type { AuthenticatedSocket, ServerMessage } from "./types";
 
 export interface HandlerDependencies {
   sessions: GameSessionStore;
   getSocket: (userId: string) => AuthenticatedSocket | undefined;
   send: (socket: AuthenticatedSocket, message: ServerMessage) => void;
+  coordinator?: RoundCoordinator;
 }
 
 function sendError(
@@ -23,16 +22,24 @@ function sendError(
 }
 
 export function createMessageHandler(deps: HandlerDependencies) {
+  const coordinator =
+    deps.coordinator ??
+    createRoundCoordinator({
+      sessions: deps.sessions,
+      getSocket: deps.getSocket,
+      send: deps.send,
+    });
+
   return async function handleMessage(
     socket: AuthenticatedSocket,
     message: ParsedClientMessage,
   ): Promise<void> {
     switch (message.type) {
       case "game:join":
-        await handleJoin(deps, socket, message.gameId);
+        await handleJoin(deps, coordinator, socket, message.gameId);
         return;
       case "game:pick":
-        await handlePick(deps, socket, message);
+        await handlePick(deps, coordinator, socket, message);
         return;
     }
   };
@@ -40,6 +47,7 @@ export function createMessageHandler(deps: HandlerDependencies) {
 
 async function handleJoin(
   deps: HandlerDependencies,
+  coordinator: RoundCoordinator,
   socket: AuthenticatedSocket,
   gameId: string,
 ): Promise<void> {
@@ -60,10 +68,13 @@ async function handleJoin(
     type: "game:state",
     state: visiblePlayerState(session.state, seat),
   });
+  const open = coordinator.roundStartMessage(session);
+  if (open) deps.send(socket, open);
 }
 
 async function handlePick(
   deps: HandlerDependencies,
+  coordinator: RoundCoordinator,
   socket: AuthenticatedSocket,
   message: Extract<ParsedClientMessage, { type: "game:pick" }>,
 ): Promise<void> {
@@ -94,55 +105,26 @@ async function handlePick(
     return;
   }
 
-  const before = session.state;
-  let nextState;
-  try {
-    nextState = submitPick(before, seat, message.cardId);
-  } catch (error) {
-    const text = error instanceof Error ? error.message : "Invalid pick";
-    sendError(deps, socket, text);
+  const result = coordinator.submitPick({
+    session,
+    seat,
+    round: message.round,
+    cardId: message.cardId,
+  });
+
+  if (result.status === "rejected") {
+    sendError(deps, socket, result.message);
     return;
   }
 
   session.lastSequence[seat] = message.sequence;
-  session.state = nextState;
+  deps.sessions.save(session);
 
-  const bothPicked =
-    session.state.player1.selectedCardId !== null &&
-    session.state.player2.selectedCardId !== null;
-
-  if (!bothPicked) {
-    deps.sessions.save(session);
+  if (result.status === "waiting") {
     deps.send(socket, {
       type: "game:state",
       state: visiblePlayerState(session.state, seat),
     });
-    return;
-  }
-
-  const resolved = resolveCurrentRound(session.state, nextCategory(session.state.category));
-  const completedRound = resolved.history[resolved.history.length - 1];
-  session.state = resolved;
-  deps.sessions.save(session);
-
-  const player1Socket = deps.getSocket(session.player1UserId);
-  const player2Socket = deps.getSocket(session.player2UserId);
-
-  if (completedRound) {
-    if (player1Socket) {
-      deps.send(player1Socket, { type: "game:roundResult", round: completedRound });
-      deps.send(player1Socket, {
-        type: "game:state",
-        state: visiblePlayerState(resolved, "player1"),
-      });
-    }
-    if (player2Socket) {
-      deps.send(player2Socket, { type: "game:roundResult", round: completedRound });
-      deps.send(player2Socket, {
-        type: "game:state",
-        state: visiblePlayerState(resolved, "player2"),
-      });
-    }
   }
 }
 

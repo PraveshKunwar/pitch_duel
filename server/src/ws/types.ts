@@ -1,4 +1,4 @@
-import { CompletedRound, PlayerState } from "../game/types";
+import { CompletedRound, PlayerState, StatCategory } from "../game/types";
 import type { WebSocket } from "ws";
 
 export type ClientMessage =
@@ -17,6 +17,14 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: "game:joined"; gameId: string }
   | { type: "game:state"; state: PlayerState }
+  | {
+      type: "game:roundStart";
+      gameId: string;
+      round: number;
+      category: StatCategory;
+      /** Server clock. The browser timer is display-only. */
+      deadlineMs: number;
+    }
   | { type: "game:roundResult"; round: CompletedRound }
   | { type: "error"; message: string };
 

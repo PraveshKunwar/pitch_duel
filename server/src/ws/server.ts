@@ -3,6 +3,7 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import { createMessageHandler } from "./handlers";
 import type { GameSessionStore } from "./gameSessions";
+import { createRoundCoordinator } from "./roundCoordinator";
 import { safeParseClientMessage } from "./schemas";
 import type { AuthenticatedSocket, ServerMessage } from "./types";
 import { verifyAndConsumeTicket } from "./tickets";
@@ -40,10 +41,20 @@ export function setupWebSocket(
   const verifyTicket = options.verifyAndConsumeTicket ?? verifyAndConsumeTicket;
   const connections = new Map<string, AuthenticatedSocket>();
 
+  const coordinator = createRoundCoordinator({
+    sessions: options.sessions,
+    getSocket: (userId) => connections.get(userId),
+    send: sendMessage,
+  });
+  options.sessions.setOnCreated((session) => {
+    coordinator.beginRound(session);
+  });
+
   const handleMessage = createMessageHandler({
     sessions: options.sessions,
     getSocket: (userId) => connections.get(userId),
     send: sendMessage,
+    coordinator,
   });
 
   const wss = new WebSocketServer({
@@ -160,6 +171,7 @@ export function setupWebSocket(
   }, HEARTBEAT_MS);
 
   app.addHook("onClose", async () => {
+    coordinator.dispose();
     clearInterval(heartbeat);
     for (const client of wss.clients) {
       client.close(1001, "server shutting down");

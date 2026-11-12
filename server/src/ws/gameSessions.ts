@@ -15,6 +15,17 @@ export interface GameSession {
    * until live game state moves to Redis (day 8 / day 11).
    */
   lastSequence: Record<PlayerSeat, number>;
+  /**
+   * Epoch ms when the open round stops taking picks.
+   * Null before the round is armed and after it resolves.
+   */
+  deadlineMs: number | null;
+  /**
+   * Round number whose resolution has been claimed.
+   * A round can move from open to claimed only once.
+   * Process-local stand-in for a Redis `SET NX` claim (day 8/11).
+   */
+  claimedRound: number | null;
 }
 
 export interface GameSessionStore {
@@ -28,10 +39,13 @@ export interface GameSessionStore {
   get(gameId: string): GameSession | undefined;
   save(session: GameSession): void;
   seatFor(session: GameSession, userId: string): PlayerSeat | null;
+  /** Fired after a session is stored. Used to arm the round timer. */
+  setOnCreated(listener: ((session: GameSession) => void) | null): void;
 }
 
 export function createGameSessionStore(): GameSessionStore {
   const sessions = new Map<string, GameSession>();
+  let onCreated: ((session: GameSession) => void) | null = null;
 
   return {
     create({
@@ -47,8 +61,11 @@ export function createGameSessionStore(): GameSessionStore {
         player1UserId,
         player2UserId,
         lastSequence: { player1: 0, player2: 0 },
+        deadlineMs: null,
+        claimedRound: null,
       };
       sessions.set(session.id, session);
+      onCreated?.(session);
       return session;
     },
 
@@ -64,6 +81,10 @@ export function createGameSessionStore(): GameSessionStore {
       if (session.player1UserId === userId) return "player1";
       if (session.player2UserId === userId) return "player2";
       return null;
+    },
+
+    setOnCreated(listener) {
+      onCreated = listener;
     },
   };
 }
