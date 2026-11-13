@@ -3,3 +3,4 @@ dist/
 .env
 *.log
 soccer_plan.pdf
+*.md

@@ -12,7 +12,9 @@ export type ClientMessage =
       round: number;
       sequence: number;
       cardId: string;
-    };
+    }
+  | { type: "matchmaking:join" }
+  | { type: "matchmaking:cancel" };
 
 export type ServerMessage =
   | { type: "game:joined"; gameId: string }
@@ -25,6 +27,18 @@ export type ServerMessage =
       deadlineMs: number;
     }
   | { type: "game:roundResult"; round: CompletedRound }
+  | {
+      type: "matchmaking:queued";
+      rating: number;
+      queuedAtMs: number;
+    }
+  | {
+      type: "matchmaking:found";
+      gameId: string;
+      opponentRating: number;
+    }
+  | { type: "matchmaking:timeout" }
+  | { type: "matchmaking:cancelled" }
   | { type: "error"; message: string };
 
 export interface AuthenticatedSocket extends WebSocket {

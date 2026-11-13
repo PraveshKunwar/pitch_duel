@@ -20,6 +20,15 @@ describe("client message schemas", () => {
     ).toBe(true);
   });
 
+  it("accepts matchmaking join and cancel", () => {
+    expect(
+      safeParseClientMessage({ type: "matchmaking:join" }).success,
+    ).toBe(true);
+    expect(
+      safeParseClientMessage({ type: "matchmaking:cancel" }).success,
+    ).toBe(true);
+  });
+
   it("rejects unknown types", () => {
     expect(safeParseClientMessage({ type: "nope" }).success).toBe(false);
   });

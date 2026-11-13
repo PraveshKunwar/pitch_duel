@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  matchmakingCancelSchema,
+  matchmakingJoinSchema,
+} from "../matchmaking/schemas";
 
 export const gameJoinSchema = z.object({
   type: z.literal("game:join"),
@@ -16,6 +20,8 @@ export const gamePickSchema = z.object({
 export const clientMessageSchema = z.discriminatedUnion("type", [
   gameJoinSchema,
   gamePickSchema,
+  matchmakingJoinSchema,
+  matchmakingCancelSchema,
 ]);
 
 export type ParsedClientMessage = z.infer<typeof clientMessageSchema>;

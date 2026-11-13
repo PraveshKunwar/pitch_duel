@@ -1,3 +1,4 @@
+import type { MatchmakingService } from "../matchmaking/service";
 import type { ParsedClientMessage } from "./schemas";
 import {
   seatFor,
@@ -15,6 +16,7 @@ export interface HandlerDependencies {
   getSocket: (userId: string) => AuthenticatedSocket | undefined;
   send: (socket: AuthenticatedSocket, message: ServerMessage) => void;
   coordinator?: RoundCoordinator;
+  matchmaking?: MatchmakingService;
 }
 
 function sendError(
@@ -44,6 +46,12 @@ export function createMessageHandler(deps: HandlerDependencies) {
         return;
       case "game:pick":
         await handlePick(deps, coordinator, socket, message);
+        return;
+      case "matchmaking:join":
+        await handleMatchmakingJoin(deps, socket);
+        return;
+      case "matchmaking:cancel":
+        await handleMatchmakingCancel(deps, socket);
         return;
     }
   };
@@ -104,6 +112,28 @@ async function handlePick(
       state: visiblePlayerState(result.session.state, result.seat),
     });
   }
+}
+
+async function handleMatchmakingJoin(
+  deps: HandlerDependencies,
+  socket: AuthenticatedSocket,
+): Promise<void> {
+  if (!deps.matchmaking) {
+    sendError(deps, socket, "Matchmaking unavailable");
+    return;
+  }
+  await deps.matchmaking.join(socket.userId);
+}
+
+async function handleMatchmakingCancel(
+  deps: HandlerDependencies,
+  socket: AuthenticatedSocket,
+): Promise<void> {
+  if (!deps.matchmaking) {
+    sendError(deps, socket, "Matchmaking unavailable");
+    return;
+  }
+  await deps.matchmaking.cancel(socket.userId);
 }
 
 export type { HandlerDependencies as MessageHandlerDependencies };

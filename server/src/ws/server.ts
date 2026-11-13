@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { WebSocket, WebSocketServer } from "ws";
 
+import type { MatchmakingService } from "../matchmaking/service";
 import { createMessageHandler } from "./handlers";
 import type { GameSessionStore } from "./gameSessions";
 import type { MatchFinalizer } from "./matchFinalizer";
@@ -34,6 +35,10 @@ export interface SetupWebSocketOptions {
   sessions: GameSessionStore;
   verifyAndConsumeTicket?: typeof verifyAndConsumeTicket;
   finalizer?: MatchFinalizer;
+  createMatchmaking?: (ctx: {
+    getSocket: (userId: string) => AuthenticatedSocket | undefined;
+    send: typeof sendMessage;
+  }) => MatchmakingService;
 }
 
 export function setupWebSocket(
@@ -42,12 +47,13 @@ export function setupWebSocket(
 ): WebSocketServer {
   const verifyTicket = options.verifyAndConsumeTicket ?? verifyAndConsumeTicket;
   const connections = new Map<string, AuthenticatedSocket>();
+  const getSocket = (userId: string) => connections.get(userId);
 
   const { finalizer } = options;
 
   const coordinator = createRoundCoordinator({
     sessions: options.sessions,
-    getSocket: (userId) => connections.get(userId),
+    getSocket,
     send: sendMessage,
     onGameFinished: finalizer
       ? (session) => finalizer.finalize(session)
@@ -88,11 +94,17 @@ export function setupWebSocket(
     }
   };
 
+  const matchmaking = options.createMatchmaking?.({
+    getSocket,
+    send: sendMessage,
+  });
+
   const handleMessage = createMessageHandler({
     sessions: options.sessions,
-    getSocket: (userId) => connections.get(userId),
+    getSocket,
     send: sendMessage,
     coordinator,
+    matchmaking,
   });
 
   const wss = new WebSocketServer({
@@ -196,6 +208,14 @@ export function setupWebSocket(
       if (connections.get(socket.userId) === socket) {
         connections.delete(socket.userId);
       }
+      if (matchmaking) {
+        void matchmaking.onDisconnect(socket.userId).catch((error) => {
+          app.log.error(
+            { err: error, userId: socket.userId },
+            "matchmaking disconnect cleanup failed",
+          );
+        });
+      }
       app.log.info({ userId: socket.userId }, "websocket disconnected");
     });
 
@@ -222,6 +242,7 @@ export function setupWebSocket(
 
   app.addHook("preClose", async () => {
     coordinator.dispose();
+    matchmaking?.dispose();
     clearInterval(heartbeat);
     if (persistRetry) clearInterval(persistRetry);
     for (const client of wss.clients) {
