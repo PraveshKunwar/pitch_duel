@@ -1,0 +1,802 @@
+[
+  {
+    "ID": "p-achraf-hakimi",
+    "name": "Achraf Hakimi",
+    "position": "DEF",
+    "attack": 20,
+    "defending": 62,
+    "passing": 37
+  },
+  {
+    "ID": "p-alessandro-bastoni",
+    "name": "Alessandro Bastoni",
+    "position": "DEF",
+    "attack": 39,
+    "defending": 78,
+    "passing": 63
+  },
+  {
+    "ID": "p-alexander-isak",
+    "name": "Alexander Isak",
+    "position": "FWD",
+    "attack": 76,
+    "defending": 34,
+    "passing": 55
+  },
+  {
+    "ID": "p-alexis-mac-allister",
+    "name": "Alexis Mac Allister",
+    "position": "MID",
+    "attack": 62,
+    "defending": 49,
+    "passing": 78
+  },
+  {
+    "ID": "p-alisson-becker",
+    "name": "Alisson Becker",
+    "position": "GK",
+    "attack": 11,
+    "defending": 81,
+    "passing": 45
+  },
+  {
+    "ID": "p-alphonso-davies",
+    "name": "Alphonso Davies",
+    "position": "DEF",
+    "attack": 42,
+    "defending": 76,
+    "passing": 67
+  },
+  {
+    "ID": "p-andrew-robertson",
+    "name": "Andrew Robertson",
+    "position": "DEF",
+    "attack": 35,
+    "defending": 68,
+    "passing": 53
+  },
+  {
+    "ID": "p-antoine-griezmann",
+    "name": "Antoine Griezmann",
+    "position": "FWD",
+    "attack": 79,
+    "defending": 35,
+    "passing": 58
+  },
+  {
+    "ID": "p-antonio-rudiger",
+    "name": "Antonio Rüdiger",
+    "position": "DEF",
+    "attack": 30,
+    "defending": 62,
+    "passing": 44
+  },
+  {
+    "ID": "p-aurelien-tchouameni",
+    "name": "Aurélien Tchouaméni",
+    "position": "MID",
+    "attack": 62,
+    "defending": 60,
+    "passing": 83
+  },
+  {
+    "ID": "p-bernardo-silva",
+    "name": "Bernardo Silva",
+    "position": "MID",
+    "attack": 50,
+    "defending": 60,
+    "passing": 74
+  },
+  {
+    "ID": "p-bruno-fernandes",
+    "name": "Bruno Fernandes",
+    "position": "MID",
+    "attack": 46,
+    "defending": 50,
+    "passing": 63
+  },
+  {
+    "ID": "p-bukayo-saka",
+    "name": "Bukayo Saka",
+    "position": "FWD",
+    "attack": 83,
+    "defending": 31,
+    "passing": 60
+  },
+  {
+    "ID": "p-casemiro",
+    "name": "Casemiro",
+    "position": "MID",
+    "attack": 57,
+    "defending": 57,
+    "passing": 74
+  },
+  {
+    "ID": "p-cody-gakpo",
+    "name": "Cody Gakpo",
+    "position": "FWD",
+    "attack": 81,
+    "defending": 22,
+    "passing": 50
+  },
+  {
+    "ID": "p-cole-palmer",
+    "name": "Cole Palmer",
+    "position": "MID",
+    "attack": 62,
+    "defending": 71,
+    "passing": 82
+  },
+  {
+    "ID": "p-cristian-romero",
+    "name": "Cristian Romero",
+    "position": "DEF",
+    "attack": 35,
+    "defending": 63,
+    "passing": 50
+  },
+  {
+    "ID": "p-dani-carvajal",
+    "name": "Dani Carvajal",
+    "position": "DEF",
+    "attack": 45,
+    "defending": 87,
+    "passing": 70
+  },
+  {
+    "ID": "p-darwin-nunez",
+    "name": "Darwin Núñez",
+    "position": "FWD",
+    "attack": 83,
+    "defending": 35,
+    "passing": 57
+  },
+  {
+    "ID": "p-david-raya",
+    "name": "David Raya",
+    "position": "GK",
+    "attack": 5,
+    "defending": 71,
+    "passing": 41
+  },
+  {
+    "ID": "p-dayot-upamecano",
+    "name": "Dayot Upamecano",
+    "position": "DEF",
+    "attack": 44,
+    "defending": 87,
+    "passing": 66
+  },
+  {
+    "ID": "p-declan-rice",
+    "name": "Declan Rice",
+    "position": "MID",
+    "attack": 66,
+    "defending": 48,
+    "passing": 72
+  },
+  {
+    "ID": "p-diogo-costa",
+    "name": "Diogo Costa",
+    "position": "GK",
+    "attack": 5,
+    "defending": 61,
+    "passing": 36
+  },
+  {
+    "ID": "p-ederson",
+    "name": "Ederson",
+    "position": "GK",
+    "attack": 14,
+    "defending": 76,
+    "passing": 43
+  },
+  {
+    "ID": "p-eduardo-camavinga",
+    "name": "Eduardo Camavinga",
+    "position": "MID",
+    "attack": 59,
+    "defending": 66,
+    "passing": 86
+  },
+  {
+    "ID": "p-emiliano-martinez",
+    "name": "Emiliano Martínez",
+    "position": "GK",
+    "attack": 20,
+    "defending": 82,
+    "passing": 47
+  },
+  {
+    "ID": "p-enzo-fernandez",
+    "name": "Enzo Fernández",
+    "position": "MID",
+    "attack": 66,
+    "defending": 60,
+    "passing": 78
+  },
+  {
+    "ID": "p-erling-haaland",
+    "name": "Erling Haaland",
+    "position": "FWD",
+    "attack": 75,
+    "defending": 28,
+    "passing": 54
+  },
+  {
+    "ID": "p-federico-dimarco",
+    "name": "Federico Dimarco",
+    "position": "DEF",
+    "attack": 32,
+    "defending": 72,
+    "passing": 54
+  },
+  {
+    "ID": "p-federico-valverde",
+    "name": "Federico Valverde",
+    "position": "MID",
+    "attack": 55,
+    "defending": 55,
+    "passing": 75
+  },
+  {
+    "ID": "p-florian-wirtz",
+    "name": "Florian Wirtz",
+    "position": "MID",
+    "attack": 57,
+    "defending": 59,
+    "passing": 73
+  },
+  {
+    "ID": "p-frenkie-de-jong",
+    "name": "Frenkie de Jong",
+    "position": "MID",
+    "attack": 51,
+    "defending": 47,
+    "passing": 68
+  },
+  {
+    "ID": "p-gabriel-magalhaes",
+    "name": "Gabriel Magalhães",
+    "position": "DEF",
+    "attack": 38,
+    "defending": 84,
+    "passing": 65
+  },
+  {
+    "ID": "p-gavi",
+    "name": "Gavi",
+    "position": "MID",
+    "attack": 57,
+    "defending": 56,
+    "passing": 77
+  },
+  {
+    "ID": "p-gianluigi-donnarumma",
+    "name": "Gianluigi Donnarumma",
+    "position": "GK",
+    "attack": 7,
+    "defending": 66,
+    "passing": 36
+  },
+  {
+    "ID": "p-hakan-calhanoglu",
+    "name": "Hakan Çalhanoğlu",
+    "position": "MID",
+    "attack": 56,
+    "defending": 56,
+    "passing": 71
+  },
+  {
+    "ID": "p-harry-kane",
+    "name": "Harry Kane",
+    "position": "FWD",
+    "attack": 81,
+    "defending": 34,
+    "passing": 52
+  },
+  {
+    "ID": "p-ibrahima-konate",
+    "name": "Ibrahima Konaté",
+    "position": "DEF",
+    "attack": 30,
+    "defending": 78,
+    "passing": 53
+  },
+  {
+    "ID": "p-jamal-musiala",
+    "name": "Jamal Musiala",
+    "position": "MID",
+    "attack": 58,
+    "defending": 54,
+    "passing": 65
+  },
+  {
+    "ID": "p-jan-oblak",
+    "name": "Jan Oblak",
+    "position": "GK",
+    "attack": 25,
+    "defending": 77,
+    "passing": 54
+  },
+  {
+    "ID": "p-joao-cancelo",
+    "name": "João Cancelo",
+    "position": "DEF",
+    "attack": 36,
+    "defending": 81,
+    "passing": 66
+  },
+  {
+    "ID": "p-joao-neves",
+    "name": "João Neves",
+    "position": "MID",
+    "attack": 51,
+    "defending": 52,
+    "passing": 68
+  },
+  {
+    "ID": "p-jonathan-david",
+    "name": "Jonathan David",
+    "position": "FWD",
+    "attack": 79,
+    "defending": 24,
+    "passing": 52
+  },
+  {
+    "ID": "p-joshua-kimmich",
+    "name": "Joshua Kimmich",
+    "position": "MID",
+    "attack": 55,
+    "defending": 60,
+    "passing": 69
+  },
+  {
+    "ID": "p-josko-gvardiol",
+    "name": "Joško Gvardiol",
+    "position": "DEF",
+    "attack": 44,
+    "defending": 79,
+    "passing": 63
+  },
+  {
+    "ID": "p-jude-bellingham",
+    "name": "Jude Bellingham",
+    "position": "MID",
+    "attack": 51,
+    "defending": 47,
+    "passing": 63
+  },
+  {
+    "ID": "p-jules-kounde",
+    "name": "Jules Koundé",
+    "position": "DEF",
+    "attack": 37,
+    "defending": 79,
+    "passing": 51
+  },
+  {
+    "ID": "p-julian-alvarez",
+    "name": "Julián Álvarez",
+    "position": "FWD",
+    "attack": 74,
+    "defending": 31,
+    "passing": 50
+  },
+  {
+    "ID": "p-kevin-de-bruyne",
+    "name": "Kevin De Bruyne",
+    "position": "MID",
+    "attack": 47,
+    "defending": 49,
+    "passing": 70
+  },
+  {
+    "ID": "p-khvicha-kvaratskhelia",
+    "name": "Khvicha Kvaratskhelia",
+    "position": "FWD",
+    "attack": 77,
+    "defending": 21,
+    "passing": 56
+  },
+  {
+    "ID": "p-kingsley-coman",
+    "name": "Kingsley Coman",
+    "position": "FWD",
+    "attack": 70,
+    "defending": 27,
+    "passing": 53
+  },
+  {
+    "ID": "p-kyle-walker",
+    "name": "Kyle Walker",
+    "position": "DEF",
+    "attack": 37,
+    "defending": 82,
+    "passing": 53
+  },
+  {
+    "ID": "p-kylian-mbappe",
+    "name": "Kylian Mbappé",
+    "position": "FWD",
+    "attack": 64,
+    "defending": 15,
+    "passing": 42
+  },
+  {
+    "ID": "p-lamine-yamal",
+    "name": "Lamine Yamal",
+    "position": "FWD",
+    "attack": 83,
+    "defending": 37,
+    "passing": 58
+  },
+  {
+    "ID": "p-lautaro-martinez",
+    "name": "Lautaro Martínez",
+    "position": "FWD",
+    "attack": 86,
+    "defending": 35,
+    "passing": 54
+  },
+  {
+    "ID": "p-leroy-sane",
+    "name": "Leroy Sané",
+    "position": "FWD",
+    "attack": 86,
+    "defending": 29,
+    "passing": 63
+  },
+  {
+    "ID": "p-lisandro-martinez",
+    "name": "Lisandro Martínez",
+    "position": "DEF",
+    "attack": 33,
+    "defending": 68,
+    "passing": 52
+  },
+  {
+    "ID": "p-luis-diaz",
+    "name": "Luis Díaz",
+    "position": "FWD",
+    "attack": 83,
+    "defending": 37,
+    "passing": 70
+  },
+  {
+    "ID": "p-luka-modric",
+    "name": "Luka Modrić",
+    "position": "MID",
+    "attack": 55,
+    "defending": 46,
+    "passing": 65
+  },
+  {
+    "ID": "p-marc-andre-ter-stegen",
+    "name": "Marc-André ter Stegen",
+    "position": "GK",
+    "attack": 16,
+    "defending": 69,
+    "passing": 43
+  },
+  {
+    "ID": "p-marcus-rashford",
+    "name": "Marcus Rashford",
+    "position": "FWD",
+    "attack": 78,
+    "defending": 29,
+    "passing": 41
+  },
+  {
+    "ID": "p-marcus-thuram",
+    "name": "Marcus Thuram",
+    "position": "FWD",
+    "attack": 75,
+    "defending": 33,
+    "passing": 55
+  },
+  {
+    "ID": "p-marquinhos",
+    "name": "Marquinhos",
+    "position": "DEF",
+    "attack": 31,
+    "defending": 69,
+    "passing": 56
+  },
+  {
+    "ID": "p-martin-degaard",
+    "name": "Martin Ødegaard",
+    "position": "MID",
+    "attack": 44,
+    "defending": 51,
+    "passing": 75
+  },
+  {
+    "ID": "p-martin-zubimendi",
+    "name": "Martín Zubimendi",
+    "position": "MID",
+    "attack": 62,
+    "defending": 65,
+    "passing": 86
+  },
+  {
+    "ID": "p-matthijs-de-ligt",
+    "name": "Matthijs de Ligt",
+    "position": "DEF",
+    "attack": 34,
+    "defending": 76,
+    "passing": 47
+  },
+  {
+    "ID": "p-micky-van-de-ven",
+    "name": "Micky van de Ven",
+    "position": "DEF",
+    "attack": 34,
+    "defending": 74,
+    "passing": 50
+  },
+  {
+    "ID": "p-mike-maignan",
+    "name": "Mike Maignan",
+    "position": "GK",
+    "attack": 17,
+    "defending": 80,
+    "passing": 46
+  },
+  {
+    "ID": "p-milan-skriniar",
+    "name": "Milan Škriniar",
+    "position": "DEF",
+    "attack": 41,
+    "defending": 75,
+    "passing": 59
+  },
+  {
+    "ID": "p-mohamed-salah",
+    "name": "Mohamed Salah",
+    "position": "FWD",
+    "attack": 69,
+    "defending": 25,
+    "passing": 53
+  },
+  {
+    "ID": "p-moises-caicedo",
+    "name": "Moisés Caicedo",
+    "position": "MID",
+    "attack": 50,
+    "defending": 52,
+    "passing": 65
+  },
+  {
+    "ID": "p-nico-williams",
+    "name": "Nico Williams",
+    "position": "FWD",
+    "attack": 70,
+    "defending": 24,
+    "passing": 50
+  },
+  {
+    "ID": "p-nicolo-barella",
+    "name": "Nicolò Barella",
+    "position": "MID",
+    "attack": 59,
+    "defending": 48,
+    "passing": 81
+  },
+  {
+    "ID": "p-nuno-mendes",
+    "name": "Nuno Mendes",
+    "position": "DEF",
+    "attack": 41,
+    "defending": 89,
+    "passing": 62
+  },
+  {
+    "ID": "p-ollie-watkins",
+    "name": "Ollie Watkins",
+    "position": "FWD",
+    "attack": 86,
+    "defending": 35,
+    "passing": 64
+  },
+  {
+    "ID": "p-ousmane-dembele",
+    "name": "Ousmane Dembélé",
+    "position": "FWD",
+    "attack": 86,
+    "defending": 30,
+    "passing": 54
+  },
+  {
+    "ID": "p-pau-cubarsi",
+    "name": "Pau Cubarsí",
+    "position": "DEF",
+    "attack": 34,
+    "defending": 72,
+    "passing": 53
+  },
+  {
+    "ID": "p-pedri",
+    "name": "Pedri",
+    "position": "MID",
+    "attack": 60,
+    "defending": 61,
+    "passing": 77
+  },
+  {
+    "ID": "p-pedro-porro",
+    "name": "Pedro Porro",
+    "position": "DEF",
+    "attack": 34,
+    "defending": 74,
+    "passing": 56
+  },
+  {
+    "ID": "p-phil-foden",
+    "name": "Phil Foden",
+    "position": "MID",
+    "attack": 69,
+    "defending": 65,
+    "passing": 80
+  },
+  {
+    "ID": "p-rafael-leao",
+    "name": "Rafael Leão",
+    "position": "FWD",
+    "attack": 71,
+    "defending": 24,
+    "passing": 51
+  },
+  {
+    "ID": "p-raphinha",
+    "name": "Raphinha",
+    "position": "FWD",
+    "attack": 70,
+    "defending": 23,
+    "passing": 55
+  },
+  {
+    "ID": "p-reece-james",
+    "name": "Reece James",
+    "position": "DEF",
+    "attack": 40,
+    "defending": 78,
+    "passing": 62
+  },
+  {
+    "ID": "p-robert-lewandowski",
+    "name": "Robert Lewandowski",
+    "position": "FWD",
+    "attack": 83,
+    "defending": 32,
+    "passing": 55
+  },
+  {
+    "ID": "p-rodri",
+    "name": "Rodri",
+    "position": "MID",
+    "attack": 55,
+    "defending": 62,
+    "passing": 69
+  },
+  {
+    "ID": "p-rodrygo",
+    "name": "Rodrygo",
+    "position": "FWD",
+    "attack": 78,
+    "defending": 23,
+    "passing": 52
+  },
+  {
+    "ID": "p-ronald-araujo",
+    "name": "Ronald Araújo",
+    "position": "DEF",
+    "attack": 29,
+    "defending": 79,
+    "passing": 53
+  },
+  {
+    "ID": "p-ruben-dias",
+    "name": "Rúben Dias",
+    "position": "DEF",
+    "attack": 39,
+    "defending": 70,
+    "passing": 51
+  },
+  {
+    "ID": "p-sandro-tonali",
+    "name": "Sandro Tonali",
+    "position": "MID",
+    "attack": 59,
+    "defending": 57,
+    "passing": 71
+  },
+  {
+    "ID": "p-son-heung-min",
+    "name": "Son Heung-min",
+    "position": "FWD",
+    "attack": 83,
+    "defending": 29,
+    "passing": 52
+  },
+  {
+    "ID": "p-theo-hernandez",
+    "name": "Theo Hernández",
+    "position": "DEF",
+    "attack": 37,
+    "defending": 81,
+    "passing": 62
+  },
+  {
+    "ID": "p-thibaut-courtois",
+    "name": "Thibaut Courtois",
+    "position": "GK",
+    "attack": 8,
+    "defending": 73,
+    "passing": 36
+  },
+  {
+    "ID": "p-trent-alexander-arnold",
+    "name": "Trent Alexander-Arnold",
+    "position": "DEF",
+    "attack": 31,
+    "defending": 70,
+    "passing": 46
+  },
+  {
+    "ID": "p-victor-osimhen",
+    "name": "Victor Osimhen",
+    "position": "FWD",
+    "attack": 65,
+    "defending": 26,
+    "passing": 38
+  },
+  {
+    "ID": "p-viktor-gyokeres",
+    "name": "Viktor Gyökeres",
+    "position": "FWD",
+    "attack": 77,
+    "defending": 30,
+    "passing": 55
+  },
+  {
+    "ID": "p-vinicius-junior",
+    "name": "Vinícius Júnior",
+    "position": "FWD",
+    "attack": 83,
+    "defending": 40,
+    "passing": 57
+  },
+  {
+    "ID": "p-virgil-van-dijk",
+    "name": "Virgil van Dijk",
+    "position": "DEF",
+    "attack": 29,
+    "defending": 75,
+    "passing": 53
+  },
+  {
+    "ID": "p-vitinha",
+    "name": "Vitinha",
+    "position": "MID",
+    "attack": 67,
+    "defending": 60,
+    "passing": 81
+  },
+  {
+    "ID": "p-warren-zaire-emery",
+    "name": "Warren Zaïre-Emery",
+    "position": "MID",
+    "attack": 57,
+    "defending": 46,
+    "passing": 73
+  },
+  {
+    "ID": "p-william-saliba",
+    "name": "William Saliba",
+    "position": "DEF",
+    "attack": 23,
+    "defending": 67,
+    "passing": 49
+  }
+]

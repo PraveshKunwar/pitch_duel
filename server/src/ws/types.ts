@@ -16,6 +16,13 @@ export type ClientMessage =
   | { type: "matchmaking:join" }
   | { type: "matchmaking:cancel" };
 
+export interface MatchPlayerView {
+  userId: string;
+  username: string;
+  rating: number | null;
+  score: number;
+}
+
 export interface MatchView {
   gameId: string;
   round: number;
@@ -26,6 +33,9 @@ export interface MatchView {
   frozen: boolean;
   opponentConnected: boolean;
   yourGracePeriodExpiresAt: number | null;
+  yourSeat: "player1" | "player2";
+  you: MatchPlayerView;
+  opponent: MatchPlayerView;
 }
 
 export type ServerMessage =
@@ -55,6 +65,7 @@ export type ServerMessage =
       type: "matchmaking:found";
       gameId: string;
       opponentRating: number;
+      opponentUsername: string;
     }
   | { type: "matchmaking:timeout" }
   | { type: "matchmaking:cancelled" }

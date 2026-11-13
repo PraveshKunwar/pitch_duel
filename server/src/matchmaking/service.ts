@@ -19,6 +19,8 @@ export interface MatchmakingDependencies {
   redis: Redis;
   sessions: GameSessionStore;
   getRating: (userId: string) => Promise<number | null>;
+  /** Optional; used for lobby/game UI labels on matchmaking:found + session meta. */
+  getUsername?: (userId: string) => Promise<string | null>;
   getSocket: (userId: string) => AuthenticatedSocket | undefined;
   send: (socket: AuthenticatedSocket, message: ServerMessage) => void;
   fanout?: GameFanout;
@@ -76,24 +78,39 @@ export function createMatchmakingService(
     void fanout.notifyUser(userId, message);
   };
 
+  const resolveUsername = async (userId: string): Promise<string> => {
+    if (!deps.getUsername) return "Opponent";
+    return (await deps.getUsername(userId)) ?? "Opponent";
+  };
+
   const createMatchedGame = async (pair: MatchedPair): Promise<string> => {
     const decks = await dealDecks();
+    const [player1Username, player2Username] = await Promise.all([
+      resolveUsername(pair.player1UserId),
+      resolveUsername(pair.player2UserId),
+    ]);
     const session = await deps.sessions.create({
       player1UserId: pair.player1UserId,
       player2UserId: pair.player2UserId,
       player1Deck: decks.player1Deck,
       player2Deck: decks.player2Deck,
+      player1Username,
+      player2Username,
+      player1Rating: pair.player1Rating,
+      player2Rating: pair.player2Rating,
     });
 
     notify(pair.player1UserId, {
       type: "matchmaking:found",
       gameId: session.id,
       opponentRating: pair.player2Rating,
+      opponentUsername: player2Username,
     });
     notify(pair.player2UserId, {
       type: "matchmaking:found",
       gameId: session.id,
       opponentRating: pair.player1Rating,
+      opponentUsername: player1Username,
     });
 
     return session.id;

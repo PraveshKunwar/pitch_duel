@@ -22,6 +22,11 @@ export interface GameSession {
   state: GameState;
   player1UserId: string;
   player2UserId: string;
+  /** Display metadata stamped at match create (survive refresh without extra HTTP). */
+  player1Username: string;
+  player2Username: string;
+  player1Rating: number | null;
+  player2Rating: number | null;
   lastSequence: Record<PlayerSeat, number>;
   deadlineMs: number | null;
   startedAtMs: number;
@@ -65,6 +70,10 @@ export interface CreateSessionInput {
   player2Deck: Card[];
   firstCategory?: StatCategory;
   startedAtMs?: number;
+  player1Username?: string;
+  player2Username?: string;
+  player1Rating?: number | null;
+  player2Rating?: number | null;
 }
 
 export type SessionCreatedListener = (
@@ -92,6 +101,10 @@ export function buildSession(input: CreateSessionInput): GameSession {
     ),
     player1UserId: input.player1UserId,
     player2UserId: input.player2UserId,
+    player1Username: input.player1Username ?? "Player1",
+    player2Username: input.player2Username ?? "Player2",
+    player1Rating: input.player1Rating ?? null,
+    player2Rating: input.player2Rating ?? null,
     lastSequence: { player1: 0, player2: 0 },
     deadlineMs: null,
     startedAtMs: input.startedAtMs ?? Date.now(),

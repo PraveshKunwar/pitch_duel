@@ -17,4 +17,7 @@ export const env = {
   jwtSecret: required("JWT_SECRET"),
   port: Number(process.env.PORT ?? 3000),
   instanceId: process.env.INSTANCE_ID ?? "local",
+  /** Secure cookies need HTTPS (or Chromium localhost). Local Vite uses HTTP → false. */
+  cookieSecure: process.env.COOKIE_SECURE !== "false",
+  corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
 };

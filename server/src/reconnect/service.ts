@@ -77,6 +77,26 @@ export function matchViewStatus(
   return "picking";
 }
 
+function playerView(
+  session: GameSession,
+  seat: PlayerSeat,
+): {
+  userId: string;
+  username: string;
+  rating: number | null;
+  score: number;
+} {
+  const isP1 = seat === "player1";
+  return {
+    userId: isP1 ? session.player1UserId : session.player2UserId,
+    username:
+      (isP1 ? session.player1Username : session.player2Username) ??
+      (isP1 ? "Player1" : "Player2"),
+    rating: (isP1 ? session.player1Rating : session.player2Rating) ?? null,
+    score: session.state[seat].score,
+  };
+}
+
 export function buildStateSnapshot(
   session: GameSession,
   seat: PlayerSeat,
@@ -99,6 +119,9 @@ export function buildStateSnapshot(
       frozen: session.frozen,
       opponentConnected: session.connections[other].connected,
       yourGracePeriodExpiresAt: session.connections[seat].gracePeriodExpiresAt,
+      yourSeat: seat,
+      you: playerView(session, seat),
+      opponent: playerView(session, other),
     },
   };
 }

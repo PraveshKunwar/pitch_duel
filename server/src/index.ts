@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import fastifyCookie from "@fastify/cookie";
+import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
 import { env } from "./config";
 import { pool } from "./db/pool";
@@ -16,6 +17,10 @@ import { setupWebSocket } from "./ws/server";
 
 const app = Fastify({ logger: true });
 
+app.register(cors, {
+  origin: env.corsOrigin,
+  credentials: true,
+});
 app.register(jwt, {
   secret: env.jwtSecret,
   sign: { expiresIn: "15m" },
@@ -49,6 +54,10 @@ setupWebSocket(app, {
       getRating: async (userId) => {
         const user = await findUserById(userId);
         return user ? Number(user.rating) : null;
+      },
+      getUsername: async (userId) => {
+        const user = await findUserById(userId);
+        return user?.username ?? null;
       },
       getSocket,
       send,

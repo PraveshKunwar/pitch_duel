@@ -4,3 +4,5 @@ dist/
 *.log
 soccer_plan.pdf
 *.md
+!README.md
+!README

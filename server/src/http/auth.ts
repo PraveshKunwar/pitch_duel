@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { hashPassword, verifyPassword } from "../auth/passwords";
+import { env } from "../config";
 import {
   createRefreshToken,
   createUser,
@@ -42,7 +43,7 @@ const loginSchema = {
 function setRefreshCookie(reply: FastifyReply, rawToken: string, expiresAt: Date) {
   reply.setCookie("refresh_token", rawToken, {
     httpOnly: true,
-    secure: true,
+    secure: env.cookieSecure,
     sameSite: "lax",
     path: "/auth",
     expires: expiresAt,
@@ -52,7 +53,7 @@ function setRefreshCookie(reply: FastifyReply, rawToken: string, expiresAt: Date
 function clearRefreshCookie(reply: FastifyReply) {
   reply.clearCookie("refresh_token", {
     httpOnly: true,
-    secure: true,
+    secure: env.cookieSecure,
     sameSite: "lax",
     path: "/auth",
   });
