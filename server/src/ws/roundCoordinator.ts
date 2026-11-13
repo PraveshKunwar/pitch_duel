@@ -2,10 +2,13 @@ import { resolveCurrentRound } from "../game/resolveCurrentRound";
 import { selectRandomCard } from "../game/selectRandomCard";
 import { submitPick as applyPick } from "../game/submitPick";
 import {
+  createLocalGameFanout,
+  type GameFanout,
+} from "./fanout";
+import {
   isTerminal,
   nextCategory,
   seatFor,
-  visiblePlayerState,
   type GameSession,
   type GameSessionStore,
   type PlayerSeat,
@@ -45,7 +48,7 @@ export interface RoundCoordinator {
     session: GameSession,
   ): Extract<ServerMessage, { type: "game:roundStart" }> | null;
   pause(gameId: string): void;
-  resume(session: GameSession): void;
+  resume(session: GameSession, options?: { notify?: boolean }): void;
   dispose(): void;
 }
 
@@ -53,6 +56,7 @@ export interface RoundCoordinatorDependencies {
   sessions: GameSessionStore;
   getSocket: (userId: string) => AuthenticatedSocket | undefined;
   send: (socket: AuthenticatedSocket, message: ServerMessage) => void;
+  fanout?: GameFanout;
   scheduler?: TimerScheduler;
   now?: () => number;
   random?: () => number;
@@ -76,6 +80,8 @@ export function createRoundCoordinator(
   const reportError =
     deps.onError ??
     ((error, context) => console.error("round coordinator", context, error));
+  const fanout =
+    deps.fanout ?? createLocalGameFanout(deps.getSocket, deps.send);
   const armed = new Map<string, ArmedTimer>();
   let nextToken = 1;
 
@@ -104,34 +110,6 @@ export function createRoundCoordinator(
       });
     });
     armed.set(gameId, { token, round, handle });
-  }
-
-  function publish(session: GameSession, message: ServerMessage): void {
-    for (const userId of [session.player1UserId, session.player2UserId]) {
-      const socket = deps.getSocket(userId);
-      if (socket) deps.send(socket, message);
-    }
-  }
-
-  function publishRoundStart(session: GameSession): void {
-    const message = roundStartMessage(session);
-    if (message) publish(session, message);
-  }
-
-  function publishResolved(session: GameSession): void {
-    const completed = session.state.history[session.state.history.length - 1];
-    if (!completed) return;
-    for (const seat of ["player1", "player2"] as const) {
-      const userId =
-        seat === "player1" ? session.player1UserId : session.player2UserId;
-      const socket = deps.getSocket(userId);
-      if (!socket) continue;
-      deps.send(socket, { type: "game:roundResult", round: completed });
-      deps.send(socket, {
-        type: "game:state",
-        state: visiblePlayerState(session.state, seat),
-      });
-    }
   }
 
   async function finish(session: GameSession): Promise<void> {
@@ -166,12 +144,12 @@ export function createRoundCoordinator(
     if (!saved) return false;
 
     disarm(saved.id);
-    publishResolved(saved);
     if (finished) {
+      await fanout.roundResolved(saved);
       await finish(saved);
     } else {
       arm(saved);
-      publishRoundStart(saved);
+      await fanout.roundResolved(saved);
     }
     return true;
   }
@@ -201,7 +179,7 @@ export function createRoundCoordinator(
       });
       if (!opened) continue;
       arm(opened);
-      publishRoundStart(opened);
+      await fanout.roundStarted(opened);
       return { session: opened, opened: true };
     }
     throw new Error(`Could not open a round for game ${gameId}`);
@@ -315,10 +293,16 @@ export function createRoundCoordinator(
     disarm(gameId);
   }
 
-  function resume(session: GameSession): void {
+  function resume(
+    session: GameSession,
+    options?: { notify?: boolean },
+  ): void {
     if (session.frozen || isTerminal(session)) return;
     arm(session);
-    publishRoundStart(session);
+    if (options?.notify === false) return;
+    void fanout.roundStarted(session).catch((error: unknown) => {
+      reportError(error, { gameId: session.id, during: "resume notify" });
+    });
   }
 
   function dispose(): void {

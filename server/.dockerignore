@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log*
+dist
+coverage
+.env
+.env.*
+*.md
+test
+vitest.config.*
+.git
+.gitignore

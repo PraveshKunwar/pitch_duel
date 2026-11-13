@@ -1,4 +1,8 @@
 import {
+  createLocalGameFanout,
+  type GameFanout,
+} from "../ws/fanout";
+import {
   isTerminal,
   seatFor,
   visiblePlayerState,
@@ -34,6 +38,8 @@ export interface ReconnectService {
     userId: string,
     connectionId: string | null,
   ): Promise<GameSession | null>;
+  /** Align local grace timers with Redis state observed via Pub/Sub. */
+  mirrorRemoteSession(session: GameSession): void;
   dispose(): void;
 }
 
@@ -41,6 +47,7 @@ export interface ReconnectServiceDependencies {
   sessions: GameSessionStore;
   getSocket: (userId: string) => AuthenticatedSocket | undefined;
   send: (socket: AuthenticatedSocket, message: ServerMessage) => void;
+  fanout?: GameFanout;
   onMatchEnded?: (session: GameSession) => Promise<unknown>;
   onResumed?: (session: GameSession) => void | Promise<unknown>;
   scheduler?: TimerScheduler;
@@ -108,6 +115,8 @@ export function createReconnectService(
   const reportError =
     deps.onError ??
     ((error, context) => console.error("reconnect", context, error));
+  const fanout =
+    deps.fanout ?? createLocalGameFanout(deps.getSocket, deps.send);
   const graceTimers = new Map<string, TimerHandle>();
 
   function cancelGrace(gameId: string, seat: PlayerSeat): void {
@@ -137,10 +146,21 @@ export function createReconnectService(
     graceTimers.set(timerKey(session.id, seat), handle);
   }
 
-  function publish(session: GameSession, message: ServerMessage): void {
-    for (const userId of [session.player1UserId, session.player2UserId]) {
-      const socket = deps.getSocket(userId);
-      if (socket) deps.send(socket, message);
+  function mirrorRemoteSession(session: GameSession): void {
+    if (isTerminal(session)) {
+      cancelAllGrace(session.id);
+      return;
+    }
+    for (const seat of ["player1", "player2"] as const) {
+      const connection = session.connections[seat];
+      if (
+        !connection.connected &&
+        connection.gracePeriodExpiresAt !== null
+      ) {
+        armGrace(session, seat);
+      } else {
+        cancelGrace(session.id, seat);
+      }
     }
   }
 
@@ -158,16 +178,13 @@ export function createReconnectService(
           ? "player1"
           : "player2";
     }
-    publish(session, {
-      type: "game:ended",
-      reason:
-        session.outcome?.kind === "abandoned"
-          ? "abandoned"
-          : session.outcome?.kind === "forfeit"
-            ? "forfeit"
-            : "completed",
-      winner,
-    });
+    const reason =
+      session.outcome?.kind === "abandoned"
+        ? "abandoned"
+        : session.outcome?.kind === "forfeit"
+          ? "forfeit"
+          : "completed";
+    await fanout.gameEnded(session, { reason, winner });
     if (!deps.onMatchEnded) return;
     try {
       await deps.onMatchEnded(session);
@@ -261,10 +278,7 @@ export function createReconnectService(
       deps.send(socket, buildStateSnapshot(saved, seat));
 
       if (wasDisconnected && !saved.frozen) {
-        publish(saved, {
-          type: "game:resumed",
-          deadlineMs: saved.deadlineMs,
-        });
+        await fanout.gameResumed(saved);
         if (deps.onResumed) {
           await deps.onResumed(saved);
         }
@@ -321,10 +335,7 @@ export function createReconnectService(
       armGrace(saved, seat);
       const expiresAt = saved.connections[seat].gracePeriodExpiresAt;
       if (expiresAt !== null) {
-        publish(saved, {
-          type: "game:paused",
-          gracePeriodExpiresAt: expiresAt,
-        });
+        await fanout.gamePaused(saved, expiresAt, seat);
       }
       return saved;
     }
@@ -338,5 +349,10 @@ export function createReconnectService(
     graceTimers.clear();
   }
 
-  return { attachConnection, onDisconnect, dispose };
+  return {
+    attachConnection,
+    onDisconnect,
+    mirrorRemoteSession,
+    dispose,
+  };
 }

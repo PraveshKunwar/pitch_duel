@@ -21,11 +21,22 @@ export interface MatchFinalizer {
   recoverPending(): Promise<PendingRecovery>;
 }
 
+export interface LeaderboardSync {
+  updateLeaderboardEntries(
+    entries: Array<{ userId: string; rating: number }>,
+  ): Promise<void>;
+}
+
 export interface MatchFinalizerDependencies {
   sessions: GameSessionStore;
   recordMatch?: (match: FinishedMatch) => Promise<RecordedMatch>;
   recordForfeit?: (match: ForfeitedMatch) => Promise<RecordedMatch>;
   recordAbandon?: (match: AbandonedMatch) => Promise<RecordedMatch>;
+  leaderboard?: LeaderboardSync;
+  onLeaderboardError?: (
+    error: unknown,
+    context: { gameId: string; userIds: string[] },
+  ) => void;
 }
 
 export function toFinishedMatch(session: GameSession): FinishedMatch {
@@ -77,6 +88,32 @@ export function createMatchFinalizer(
     deps.recordAbandon ??
     ((match: AbandonedMatch) => recordAbandonedMatch(match));
 
+  async function syncLeaderboard(
+    session: GameSession,
+    recorded: RecordedMatch,
+  ): Promise<void> {
+    if (!deps.leaderboard || recorded.status !== "finished") return;
+    const entries = [
+      {
+        userId: session.player1UserId,
+        rating: recorded.ratings.player1,
+      },
+      {
+        userId: session.player2UserId,
+        rating: recorded.ratings.player2,
+      },
+    ];
+    try {
+      await deps.leaderboard.updateLeaderboardEntries(entries);
+    } catch (error) {
+      // Postgres already committed — never roll back the match for Redis failure.
+      deps.onLeaderboardError?.(error, {
+        gameId: session.id,
+        userIds: [session.player1UserId, session.player2UserId],
+      });
+    }
+  }
+
   async function finalize(session: GameSession): Promise<RecordedMatch> {
     let recorded: RecordedMatch;
     if (session.outcome?.kind === "abandoned") {
@@ -86,6 +123,7 @@ export function createMatchFinalizer(
     } else {
       recorded = await recordMatch(toFinishedMatch(session));
     }
+    await syncLeaderboard(session, recorded);
     await deps.sessions.markPersisted(session.id, [
       session.player1UserId,
       session.player2UserId,

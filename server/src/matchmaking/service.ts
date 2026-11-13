@@ -1,5 +1,9 @@
 import type Redis from "ioredis";
 import type { Card } from "../game/types";
+import {
+  createLocalGameFanout,
+  type GameFanout,
+} from "../ws/fanout";
 import type { GameSessionStore } from "../ws/gameSessions";
 import type { AuthenticatedSocket, ServerMessage } from "../ws/types";
 import { dealMatchDecks } from "./decks";
@@ -17,6 +21,7 @@ export interface MatchmakingDependencies {
   getRating: (userId: string) => Promise<number | null>;
   getSocket: (userId: string) => AuthenticatedSocket | undefined;
   send: (socket: AuthenticatedSocket, message: ServerMessage) => void;
+  fanout?: GameFanout;
   dealDecks?: () => Promise<{ player1Deck: Card[]; player2Deck: Card[] }>;
   now?: () => number;
   config?: Partial<MatchmakingConfig>;
@@ -43,6 +48,8 @@ export function createMatchmakingService(
   const queue = createRankedQueue(deps.redis, config);
   const now = deps.now ?? Date.now;
   const dealDecks = deps.dealDecks ?? dealMatchDecks;
+  const fanout =
+    deps.fanout ?? createLocalGameFanout(deps.getSocket, deps.send);
   const locks = new Map<string, Promise<void>>();
 
   const withLock = async (
@@ -66,8 +73,7 @@ export function createMatchmakingService(
   };
 
   const notify = (userId: string, message: ServerMessage): void => {
-    const socket = deps.getSocket(userId);
-    if (socket) deps.send(socket, message);
+    void fanout.notifyUser(userId, message);
   };
 
   const createMatchedGame = async (pair: MatchedPair): Promise<string> => {

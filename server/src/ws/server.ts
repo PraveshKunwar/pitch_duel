@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
+import type Redis from "ioredis";
 import { WebSocket, WebSocketServer } from "ws";
 
 import type { MatchmakingService } from "../matchmaking/service";
@@ -7,6 +8,15 @@ import {
   createReconnectService,
   type ReconnectService,
 } from "../reconnect/service";
+import { createEventPublisher } from "../redis/publisher";
+import { createEventSubscriber } from "../redis/subscriber";
+import { createConnectionRegistry } from "./connections";
+import { createGameEventRouter } from "./events";
+import {
+  createLocalGameFanout,
+  createRedisGameFanout,
+  type GameFanout,
+} from "./fanout";
 import { createMessageHandler } from "./handlers";
 import type { GameSessionStore } from "./gameSessions";
 import type { MatchFinalizer } from "./matchFinalizer";
@@ -40,13 +50,18 @@ export interface SetupWebSocketOptions {
   sessions: GameSessionStore;
   verifyAndConsumeTicket?: typeof verifyAndConsumeTicket;
   finalizer?: MatchFinalizer;
+  /** When set, game/user events fan out through Redis Pub/Sub. */
+  redis?: Redis;
+  instanceId?: string;
   createMatchmaking?: (ctx: {
     getSocket: (userId: string) => AuthenticatedSocket | undefined;
     send: typeof sendMessage;
+    fanout: GameFanout;
   }) => MatchmakingService;
   createReconnect?: (ctx: {
     getSocket: (userId: string) => AuthenticatedSocket | undefined;
     send: typeof sendMessage;
+    fanout: GameFanout;
     onMatchEnded?: (session: import("./gameSessions").GameSession) => Promise<unknown>;
     onResumed?: (session: import("./gameSessions").GameSession) => void | Promise<unknown>;
   }) => ReconnectService;
@@ -58,15 +73,25 @@ export function setupWebSocket(
   options: SetupWebSocketOptions,
 ): WebSocketServer {
   const verifyTicket = options.verifyAndConsumeTicket ?? verifyAndConsumeTicket;
-  const connections = new Map<string, AuthenticatedSocket>();
+  const connections = createConnectionRegistry();
   const getSocket = (userId: string) => connections.get(userId);
+  const instanceId = options.instanceId ?? "local";
 
   const { finalizer } = options;
+
+  const localFanout = createLocalGameFanout(getSocket, sendMessage);
+  const publisher = options.redis
+    ? createEventPublisher(options.redis)
+    : null;
+  const fanout: GameFanout = publisher
+    ? createRedisGameFanout(publisher, instanceId, localFanout)
+    : localFanout;
 
   const coordinator = createRoundCoordinator({
     sessions: options.sessions,
     getSocket,
     send: sendMessage,
+    fanout,
     onGameFinished: finalizer
       ? (session) => finalizer.finalize(session)
       : undefined,
@@ -82,19 +107,23 @@ export function setupWebSocket(
     options.createReconnect?.({
       getSocket,
       send: sendMessage,
+      fanout,
       onMatchEnded: finalizer
         ? (session) => finalizer.finalize(session)
         : undefined,
-      onResumed: (session) => coordinator.resume(session),
+      onResumed: (session) =>
+        coordinator.resume(session, { notify: false }),
     }) ??
     createReconnectService({
       sessions: options.sessions,
       getSocket,
       send: sendMessage,
+      fanout,
       onMatchEnded: finalizer
         ? (session) => finalizer.finalize(session)
         : undefined,
-      onResumed: (session) => coordinator.resume(session),
+      onResumed: (session) =>
+        coordinator.resume(session, { notify: false }),
       config: options.gracePeriodMs
         ? { gracePeriodMs: options.gracePeriodMs }
         : undefined,
@@ -102,6 +131,63 @@ export function setupWebSocket(
         app.log.error({ err: error, ...context }, "reconnect service failed");
       },
     });
+
+  const eventRouter = createGameEventRouter({
+    instanceId,
+    sessions: options.sessions,
+    getSocket,
+    send: sendMessage,
+    coordinator,
+    reconnect,
+  });
+
+  const subscriber = options.redis
+    ? createEventSubscriber({
+        redis: options.redis,
+        onGameEvent: (event) => eventRouter.handleGameEvent(event),
+        onUserEvent: (userId, event) =>
+          eventRouter.handleUserEvent(userId, event),
+        onError: (error, context) => {
+          app.log.error({ err: error, ...context }, "redis subscriber failed");
+        },
+      })
+    : null;
+
+  /** Local players currently attached to each game (drives game-channel refcounts). */
+  const localGameMembers = new Map<string, Set<string>>();
+
+  const watchGame = async (userId: string, gameId: string): Promise<void> => {
+    if (!subscriber) return;
+    let members = localGameMembers.get(gameId);
+    if (!members) {
+      members = new Set();
+      localGameMembers.set(gameId, members);
+      await subscriber.retainGame(gameId);
+    }
+    members.add(userId);
+  };
+
+  const unwatchGame = async (
+    userId: string,
+    gameId: string,
+  ): Promise<void> => {
+    if (!subscriber) return;
+    const members = localGameMembers.get(gameId);
+    if (!members) return;
+    members.delete(userId);
+    if (members.size > 0) return;
+    localGameMembers.delete(gameId);
+    await subscriber.releaseGame(gameId);
+  };
+
+  const unwatchUserGames = async (userId: string): Promise<void> => {
+    const gameIds = [...localGameMembers.entries()]
+      .filter(([, members]) => members.has(userId))
+      .map(([gameId]) => gameId);
+    for (const gameId of gameIds) {
+      await unwatchGame(userId, gameId);
+    }
+  };
 
   let recovering = false;
   const recoverUnpersisted = async (): Promise<void> => {
@@ -134,6 +220,7 @@ export function setupWebSocket(
   const matchmaking = options.createMatchmaking?.({
     getSocket,
     send: sendMessage,
+    fanout,
   });
 
   const handleMessage = createMessageHandler({
@@ -196,20 +283,33 @@ export function setupWebSocket(
   };
 
   wss.on("connection", (socket: AuthenticatedSocket) => {
-    const previous = connections.get(socket.userId);
-    connections.set(socket.userId, socket);
-    if (previous && previous !== socket) {
+    const previous = connections.set(socket);
+    if (previous) {
       previous.close(1000, "replaced by new connection");
+    } else {
+      void subscriber?.retainUser(socket.userId).catch((error: unknown) => {
+        app.log.error(
+          { err: error, userId: socket.userId },
+          "user channel subscribe failed",
+        );
+      });
     }
 
     app.log.info(
-      { userId: socket.userId, connectionId: socket.connectionId },
+      {
+        userId: socket.userId,
+        connectionId: socket.connectionId,
+        instanceId,
+      },
       "authenticated websocket connected",
     );
 
     void reconnect
       .attachConnection(socket)
-      .then((session) => {
+      .then(async (session) => {
+        if (session) {
+          await watchGame(socket.userId, session.id);
+        }
         if (!session || session.frozen || session.outcome) return;
         return coordinator.beginRound(session.id);
       })
@@ -244,6 +344,12 @@ export function setupWebSocket(
 
       try {
         await handleMessage(socket, parsed.data);
+        if (parsed.data.type === "game:join") {
+          const active = await options.sessions.activeGameFor(socket.userId);
+          if (active === parsed.data.gameId) {
+            await watchGame(socket.userId, parsed.data.gameId);
+          }
+        }
       } catch (error) {
         app.log.error(
           { err: error, userId: socket.userId },
@@ -257,12 +363,22 @@ export function setupWebSocket(
     });
 
     socket.on("close", () => {
-      if (connections.get(socket.userId) === socket) {
-        connections.delete(socket.userId);
-      } else {
+      if (!connections.deleteIfCurrent(socket)) {
         // A newer socket already replaced this one — do not start grace.
         return;
       }
+      void subscriber?.releaseUser(socket.userId).catch((error: unknown) => {
+        app.log.error(
+          { err: error, userId: socket.userId },
+          "user channel unsubscribe failed",
+        );
+      });
+      void unwatchUserGames(socket.userId).catch((error: unknown) => {
+        app.log.error(
+          { err: error, userId: socket.userId },
+          "game channel unsubscribe failed",
+        );
+      });
       if (matchmaking) {
         void matchmaking.onDisconnect(socket.userId).catch((error) => {
           app.log.error(
@@ -282,7 +398,7 @@ export function setupWebSocket(
             "game disconnect handling failed",
           );
         });
-      app.log.info({ userId: socket.userId }, "websocket disconnected");
+      app.log.info({ userId: socket.userId, instanceId }, "websocket disconnected");
     });
 
     socket.on("error", (error) => {
@@ -316,6 +432,9 @@ export function setupWebSocket(
       client.close(1001, "server shutting down");
     }
     connections.clear();
+    if (subscriber) {
+      await subscriber.dispose();
+    }
     await new Promise<void>((resolve) => {
       wss.close(() => resolve());
     });

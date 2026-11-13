@@ -48,11 +48,12 @@ async function boot(options?: {
     sessions,
     finalizer,
     gracePeriodMs: options?.gracePeriodMs,
-    createReconnect: ({ getSocket, send, onMatchEnded, onResumed }) => {
+    createReconnect: ({ getSocket, send, fanout, onMatchEnded, onResumed }) => {
       reconnect = createReconnectService({
         sessions,
         getSocket,
         send,
+        fanout,
         onMatchEnded,
         onResumed,
         scheduler: clock,

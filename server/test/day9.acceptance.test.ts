@@ -38,7 +38,7 @@ async function boot(options?: {
 
   setupWebSocket(app, {
     sessions,
-    createMatchmaking: ({ getSocket, send }) => {
+    createMatchmaking: ({ getSocket, send, fanout }) => {
       matchmaking = createMatchmakingService({
         redis: redis.client,
         sessions,
@@ -48,6 +48,7 @@ async function boot(options?: {
         },
         getSocket,
         send,
+        fanout,
         dealDecks: async () => ({
           player1Deck: scripted.player1Deck,
           player2Deck: scripted.player2Deck,

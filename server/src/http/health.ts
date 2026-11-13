@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { env } from "../config";
 import { pool } from "../db/pool";
 import { redis } from "../db/redis";
 
@@ -23,6 +24,7 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
     const ok = postgres === "up" && redisStatus === "up";
     return reply.code(ok ? 200 : 503).send({
       status: ok ? "ok" : "degraded",
+      instanceId: env.instanceId,
       postgres,
       redis: redisStatus,
     });

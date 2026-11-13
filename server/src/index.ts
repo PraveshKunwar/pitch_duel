@@ -7,6 +7,8 @@ import { redis } from "./db/redis";
 import { findUserById } from "./db/users";
 import { authRoutes } from "./http/auth";
 import { healthRoutes } from "./http/health";
+import { leaderboardRoutes } from "./http/leaderboard";
+import { createLeaderboardService } from "./leaderboard/leaderboard";
 import { createMatchmakingService } from "./matchmaking/service";
 import { createRedisGameSessionStore } from "./redis/gameSessionStore";
 import { createMatchFinalizer } from "./ws/matchFinalizer";
@@ -23,11 +25,24 @@ app.register(healthRoutes);
 app.register(authRoutes);
 
 const sessions = createRedisGameSessionStore(redis);
-const finalizer = createMatchFinalizer({ sessions });
+const leaderboard = createLeaderboardService(redis);
+app.register(leaderboardRoutes(leaderboard));
+const finalizer = createMatchFinalizer({
+  sessions,
+  leaderboard,
+  onLeaderboardError: (error, context) => {
+    app.log.error(
+      { err: error, gameId: context.gameId, userIds: context.userIds },
+      "leaderboard update failed after match commit",
+    );
+  },
+});
 setupWebSocket(app, {
   sessions,
   finalizer,
-  createMatchmaking: ({ getSocket, send }) =>
+  redis,
+  instanceId: env.instanceId,
+  createMatchmaking: ({ getSocket, send, fanout }) =>
     createMatchmakingService({
       redis,
       sessions,
@@ -37,11 +52,16 @@ setupWebSocket(app, {
       },
       getSocket,
       send,
+      fanout,
     }),
 });
 
 async function main(): Promise<void> {
   await app.listen({ port: env.port, host: "0.0.0.0" });
+  app.log.info(
+    { instanceId: env.instanceId, port: env.port },
+    "application instance listening",
+  );
 }
 
 const shutdown = async () => {

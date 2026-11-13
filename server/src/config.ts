@@ -16,4 +16,5 @@ export const env = {
   redisUrl: required("REDIS_URL"),
   jwtSecret: required("JWT_SECRET"),
   port: Number(process.env.PORT ?? 3000),
+  instanceId: process.env.INSTANCE_ID ?? "local",
 };

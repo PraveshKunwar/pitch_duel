@@ -36,6 +36,27 @@ export async function findUserById(id: string) {
   return res.rows[0] ?? null;
 }
 
+export async function findUsersByIds(
+  ids: string[],
+): Promise<Array<{ id: string; username: string; rating: number }>> {
+  if (ids.length === 0) return [];
+  const res = await pool.query<{
+    id: string;
+    username: string;
+    rating: number;
+  }>(
+    `SELECT id, username, rating
+     FROM users
+     WHERE id = ANY($1::bigint[])`,
+    [ids],
+  );
+  return res.rows.map((row) => ({
+    id: String(row.id),
+    username: row.username,
+    rating: Number(row.rating),
+  }));
+}
+
 export async function createRefreshToken(userId: string) {
   const rawToken = randomBytes(32).toString("base64url");
   const expiresAt = refreshExpiry();
