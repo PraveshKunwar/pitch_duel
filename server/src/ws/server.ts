@@ -1,7 +1,12 @@
+import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { WebSocket, WebSocketServer } from "ws";
 
 import type { MatchmakingService } from "../matchmaking/service";
+import {
+  createReconnectService,
+  type ReconnectService,
+} from "../reconnect/service";
 import { createMessageHandler } from "./handlers";
 import type { GameSessionStore } from "./gameSessions";
 import type { MatchFinalizer } from "./matchFinalizer";
@@ -39,6 +44,13 @@ export interface SetupWebSocketOptions {
     getSocket: (userId: string) => AuthenticatedSocket | undefined;
     send: typeof sendMessage;
   }) => MatchmakingService;
+  createReconnect?: (ctx: {
+    getSocket: (userId: string) => AuthenticatedSocket | undefined;
+    send: typeof sendMessage;
+    onMatchEnded?: (session: import("./gameSessions").GameSession) => Promise<unknown>;
+    onResumed?: (session: import("./gameSessions").GameSession) => void | Promise<unknown>;
+  }) => ReconnectService;
+  gracePeriodMs?: number;
 }
 
 export function setupWebSocket(
@@ -65,6 +77,31 @@ export function setupWebSocket(
   options.sessions.setOnCreated((session) =>
     coordinator.beginRound(session.id),
   );
+
+  const reconnect =
+    options.createReconnect?.({
+      getSocket,
+      send: sendMessage,
+      onMatchEnded: finalizer
+        ? (session) => finalizer.finalize(session)
+        : undefined,
+      onResumed: (session) => coordinator.resume(session),
+    }) ??
+    createReconnectService({
+      sessions: options.sessions,
+      getSocket,
+      send: sendMessage,
+      onMatchEnded: finalizer
+        ? (session) => finalizer.finalize(session)
+        : undefined,
+      onResumed: (session) => coordinator.resume(session),
+      config: options.gracePeriodMs
+        ? { gracePeriodMs: options.gracePeriodMs }
+        : undefined,
+      onError: (error, context) => {
+        app.log.error({ err: error, ...context }, "reconnect service failed");
+      },
+    });
 
   let recovering = false;
   const recoverUnpersisted = async (): Promise<void> => {
@@ -105,6 +142,7 @@ export function setupWebSocket(
     send: sendMessage,
     coordinator,
     matchmaking,
+    reconnect,
   });
 
   const wss = new WebSocketServer({
@@ -143,6 +181,7 @@ export function setupWebSocket(
           wss.handleUpgrade(request, socket, head, (ws) => {
             const authenticated = ws as AuthenticatedSocket;
             authenticated.userId = user.userId;
+            authenticated.connectionId = randomUUID();
             authenticated.isAlive = true;
             wss.emit("connection", authenticated, request);
           });
@@ -158,15 +197,28 @@ export function setupWebSocket(
 
   wss.on("connection", (socket: AuthenticatedSocket) => {
     const previous = connections.get(socket.userId);
+    connections.set(socket.userId, socket);
     if (previous && previous !== socket) {
       previous.close(1000, "replaced by new connection");
     }
-    connections.set(socket.userId, socket);
 
     app.log.info(
-      { userId: socket.userId },
+      { userId: socket.userId, connectionId: socket.connectionId },
       "authenticated websocket connected",
     );
+
+    void reconnect
+      .attachConnection(socket)
+      .then((session) => {
+        if (!session || session.frozen || session.outcome) return;
+        return coordinator.beginRound(session.id);
+      })
+      .catch((error: unknown) => {
+        app.log.error(
+          { err: error, userId: socket.userId },
+          "auto-reconnect failed",
+        );
+      });
 
     socket.on("pong", () => {
       socket.isAlive = true;
@@ -207,6 +259,9 @@ export function setupWebSocket(
     socket.on("close", () => {
       if (connections.get(socket.userId) === socket) {
         connections.delete(socket.userId);
+      } else {
+        // A newer socket already replaced this one — do not start grace.
+        return;
       }
       if (matchmaking) {
         void matchmaking.onDisconnect(socket.userId).catch((error) => {
@@ -216,6 +271,17 @@ export function setupWebSocket(
           );
         });
       }
+      void reconnect
+        .onDisconnect(socket.userId, socket.connectionId)
+        .then((session) => {
+          if (session?.frozen) coordinator.pause(session.id);
+        })
+        .catch((error: unknown) => {
+          app.log.error(
+            { err: error, userId: socket.userId },
+            "game disconnect handling failed",
+          );
+        });
       app.log.info({ userId: socket.userId }, "websocket disconnected");
     });
 
@@ -242,6 +308,7 @@ export function setupWebSocket(
 
   app.addHook("preClose", async () => {
     coordinator.dispose();
+    reconnect.dispose();
     matchmaking?.dispose();
     clearInterval(heartbeat);
     if (persistRetry) clearInterval(persistRetry);

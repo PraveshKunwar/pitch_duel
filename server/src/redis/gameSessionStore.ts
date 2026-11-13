@@ -2,6 +2,7 @@ import type Redis from "ioredis";
 import { redis } from "../db/redis";
 import {
   buildSession,
+  isTerminal,
   type GameSession,
   type GameSessionStore,
   type SessionCreatedListener,
@@ -83,7 +84,7 @@ export function createRedisGameSessionStore(
 
     async update(next) {
       const saved: GameSession = { ...next, version: next.version + 1 };
-      const finished = saved.state.status === "finished";
+      const terminal = isTerminal(saved);
       const written = await client.eval(
         COMPARE_AND_SWAP,
         2,
@@ -92,8 +93,8 @@ export function createRedisGameSessionStore(
         String(next.version),
         String(saved.version),
         JSON.stringify(saved),
-        String(finished ? UNPERSISTED_TTL_SECONDS : LIVE_TTL_SECONDS),
-        finished ? saved.id : "",
+        String(terminal ? UNPERSISTED_TTL_SECONDS : LIVE_TTL_SECONDS),
+        terminal ? saved.id : "",
       );
       return written === 1 ? saved : null;
     },

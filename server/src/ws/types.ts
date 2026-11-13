@@ -1,4 +1,4 @@
-import { CompletedRound, PlayerState, StatCategory } from "../game/types";
+import type { CompletedRound, PlayerState, StatCategory } from "../game/types";
 import type { WebSocket } from "ws";
 
 export type ClientMessage =
@@ -16,9 +16,21 @@ export type ClientMessage =
   | { type: "matchmaking:join" }
   | { type: "matchmaking:cancel" };
 
+export interface MatchView {
+  gameId: string;
+  round: number;
+  category: StatCategory;
+  status: "picking" | "finished" | "forfeited" | "abandoned";
+  history: CompletedRound[];
+  deadlineMs: number | null;
+  frozen: boolean;
+  opponentConnected: boolean;
+  yourGracePeriodExpiresAt: number | null;
+}
+
 export type ServerMessage =
   | { type: "game:joined"; gameId: string }
-  | { type: "game:state"; state: PlayerState }
+  | { type: "game:state"; state: PlayerState; match?: MatchView }
   | {
       type: "game:roundStart";
       gameId: string;
@@ -27,6 +39,13 @@ export type ServerMessage =
       deadlineMs: number;
     }
   | { type: "game:roundResult"; round: CompletedRound }
+  | { type: "game:paused"; gracePeriodExpiresAt: number }
+  | { type: "game:resumed"; deadlineMs: number | null }
+  | {
+      type: "game:ended";
+      reason: "completed" | "forfeit" | "abandoned";
+      winner: "player1" | "player2" | null;
+    }
   | {
       type: "matchmaking:queued";
       rating: number;
@@ -43,5 +62,6 @@ export type ServerMessage =
 
 export interface AuthenticatedSocket extends WebSocket {
   userId: string;
+  connectionId: string;
   isAlive: boolean;
 }

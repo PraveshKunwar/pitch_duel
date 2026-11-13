@@ -6,6 +6,7 @@ import type { AuthenticatedSocket } from "../src/ws/types";
 function fakeSocket(isAlive: boolean): AuthenticatedSocket {
   return {
     userId: "u",
+    connectionId: "conn",
     isAlive,
     terminate: vi.fn(),
     ping: vi.fn(),

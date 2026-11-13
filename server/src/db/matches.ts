@@ -17,10 +17,28 @@ export interface FinishedMatch {
 
 export interface RecordedMatch {
   matchId: string;
-  winnerId: string;
-  ratingDelta: number;
+  winnerId: string | null;
+  ratingDelta: number | null;
   ratings: Record<Seat, number>;
   alreadyRecorded: boolean;
+  status: "finished" | "abandoned";
+}
+
+export interface ForfeitedMatch {
+  gameId: string;
+  player1Id: string;
+  player2Id: string;
+  winner: Seat;
+  startedAt: Date;
+  endedAt: Date;
+}
+
+export interface AbandonedMatch {
+  gameId: string;
+  player1Id: string;
+  player2Id: string;
+  startedAt: Date;
+  endedAt: Date;
 }
 
 export async function recordFinishedMatch(
@@ -64,6 +82,7 @@ export async function recordFinishedMatch(
         ratingDelta: previous.rating_delta,
         ratings: { player1: player1Rating, player2: player2Rating },
         alreadyRecorded: true,
+        status: "finished",
       };
     }
 
@@ -130,6 +149,185 @@ export async function recordFinishedMatch(
         player2: player1Won ? elo.loserRating : elo.winnerRating,
       },
       alreadyRecorded: false,
+      status: "finished",
+    };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function recordForfeitedMatch(
+  match: ForfeitedMatch,
+  db: Pick<pg.Pool, "connect"> = pool,
+): Promise<RecordedMatch> {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+
+    const locked = await client.query<{ id: string; rating: number }>(
+      `SELECT id, rating
+       FROM users
+       WHERE id IN ($1, $2)
+       ORDER BY id
+       FOR UPDATE`,
+      [match.player1Id, match.player2Id],
+    );
+    const ratingOf = new Map(
+      locked.rows.map((row) => [String(row.id), row.rating]),
+    );
+    const player1Rating = ratingOf.get(match.player1Id);
+    const player2Rating = ratingOf.get(match.player2Id);
+    if (player1Rating === undefined || player2Rating === undefined) {
+      throw new Error(`Players not found for game ${match.gameId}`);
+    }
+
+    const existing = await client.query<{
+      id: string;
+      winner_id: string;
+      rating_delta: number;
+    }>(`SELECT id, winner_id, rating_delta FROM matches WHERE game_id = $1`, [
+      match.gameId,
+    ]);
+    const previous = existing.rows[0];
+    if (previous) {
+      await client.query("ROLLBACK");
+      return {
+        matchId: String(previous.id),
+        winnerId: String(previous.winner_id),
+        ratingDelta: previous.rating_delta,
+        ratings: { player1: player1Rating, player2: player2Rating },
+        alreadyRecorded: true,
+        status: "finished",
+      };
+    }
+
+    const player1Won = match.winner === "player1";
+    const winnerId = player1Won ? match.player1Id : match.player2Id;
+    const loserId = player1Won ? match.player2Id : match.player1Id;
+    const elo = applyElo(
+      player1Won ? player1Rating : player2Rating,
+      player1Won ? player2Rating : player1Rating,
+    );
+
+    await client.query(`UPDATE users SET rating = $2 WHERE id = $1`, [
+      winnerId,
+      elo.winnerRating,
+    ]);
+    await client.query(`UPDATE users SET rating = $2 WHERE id = $1`, [
+      loserId,
+      elo.loserRating,
+    ]);
+
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO matches
+         (game_id, player1_id, player2_id, winner_id, rating_delta,
+          status, started_at, ended_at)
+       VALUES ($1, $2, $3, $4, $5, 'finished', $6, $7)
+       RETURNING id`,
+      [
+        match.gameId,
+        match.player1Id,
+        match.player2Id,
+        winnerId,
+        elo.delta,
+        match.startedAt,
+        match.endedAt,
+      ],
+    );
+
+    await client.query("COMMIT");
+    return {
+      matchId: String(inserted.rows[0].id),
+      winnerId,
+      ratingDelta: elo.delta,
+      ratings: {
+        player1: player1Won ? elo.winnerRating : elo.loserRating,
+        player2: player1Won ? elo.loserRating : elo.winnerRating,
+      },
+      alreadyRecorded: false,
+      status: "finished",
+    };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function recordAbandonedMatch(
+  match: AbandonedMatch,
+  db: Pick<pg.Pool, "connect"> = pool,
+): Promise<RecordedMatch> {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+
+    const locked = await client.query<{ id: string; rating: number }>(
+      `SELECT id, rating
+       FROM users
+       WHERE id IN ($1, $2)
+       ORDER BY id
+       FOR UPDATE`,
+      [match.player1Id, match.player2Id],
+    );
+    const ratingOf = new Map(
+      locked.rows.map((row) => [String(row.id), row.rating]),
+    );
+    const player1Rating = ratingOf.get(match.player1Id);
+    const player2Rating = ratingOf.get(match.player2Id);
+    if (player1Rating === undefined || player2Rating === undefined) {
+      throw new Error(`Players not found for game ${match.gameId}`);
+    }
+
+    const existing = await client.query<{
+      id: string;
+      winner_id: string | null;
+      rating_delta: number | null;
+      status: string;
+    }>(
+      `SELECT id, winner_id, rating_delta, status FROM matches WHERE game_id = $1`,
+      [match.gameId],
+    );
+    const previous = existing.rows[0];
+    if (previous) {
+      await client.query("ROLLBACK");
+      return {
+        matchId: String(previous.id),
+        winnerId: previous.winner_id ? String(previous.winner_id) : null,
+        ratingDelta: previous.rating_delta,
+        ratings: { player1: player1Rating, player2: player2Rating },
+        alreadyRecorded: true,
+        status: previous.status === "abandoned" ? "abandoned" : "finished",
+      };
+    }
+
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO matches
+         (game_id, player1_id, player2_id, winner_id, rating_delta,
+          status, started_at, ended_at)
+       VALUES ($1, $2, $3, NULL, NULL, 'abandoned', $4, $5)
+       RETURNING id`,
+      [
+        match.gameId,
+        match.player1Id,
+        match.player2Id,
+        match.startedAt,
+        match.endedAt,
+      ],
+    );
+
+    await client.query("COMMIT");
+    return {
+      matchId: String(inserted.rows[0].id),
+      winnerId: null,
+      ratingDelta: null,
+      ratings: { player1: player1Rating, player2: player2Rating },
+      alreadyRecorded: false,
+      status: "abandoned",
     };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);

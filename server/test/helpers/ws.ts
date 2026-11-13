@@ -11,11 +11,17 @@ export class TestClient {
   readonly received: ServerMessage[] = [];
   private cursor = 0;
   private wake: (() => void) | null = null;
+  private closeWake: (() => void) | null = null;
+  private closed = false;
 
   private constructor(readonly socket: WebSocket) {
     socket.on("message", (data) => {
       this.received.push(JSON.parse(data.toString()) as ServerMessage);
       this.wake?.();
+    });
+    socket.on("close", () => {
+      this.closed = true;
+      this.closeWake?.();
     });
     socket.on("error", () => {});
   }
@@ -71,6 +77,20 @@ export class TestClient {
 
   close(): void {
     this.socket.close();
+  }
+
+  async waitUntilClosed(timeoutMs = 5_000): Promise<void> {
+    if (this.closed || this.socket.readyState === WebSocket.CLOSED) return;
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("timed out waiting for close")),
+        timeoutMs,
+      );
+      this.closeWake = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
   }
 }
 

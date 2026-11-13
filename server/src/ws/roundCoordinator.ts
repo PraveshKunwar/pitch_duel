@@ -2,6 +2,7 @@ import { resolveCurrentRound } from "../game/resolveCurrentRound";
 import { selectRandomCard } from "../game/selectRandomCard";
 import { submitPick as applyPick } from "../game/submitPick";
 import {
+  isTerminal,
   nextCategory,
   seatFor,
   visiblePlayerState,
@@ -43,6 +44,8 @@ export interface RoundCoordinator {
   roundStartMessage(
     session: GameSession,
   ): Extract<ServerMessage, { type: "game:roundStart" }> | null;
+  pause(gameId: string): void;
+  resume(session: GameSession): void;
   dispose(): void;
 }
 
@@ -84,7 +87,7 @@ export function createRoundCoordinator(
   }
 
   function arm(session: GameSession): void {
-    if (session.deadlineMs === null) return;
+    if (session.frozen || session.deadlineMs === null) return;
     const gameId = session.id;
     const round = session.state.round;
     if (armed.get(gameId)?.round === round) return;
@@ -158,6 +161,7 @@ export function createRoundCoordinator(
       lastSequence,
       deadlineMs: finished ? null : at + roundMs,
       endedAtMs: finished ? at : null,
+      outcome: finished ? { kind: "completed" } : session.outcome,
     });
     if (!saved) return false;
 
@@ -178,7 +182,11 @@ export function createRoundCoordinator(
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
       const session = await deps.sessions.get(gameId);
       if (!session) return null;
-      if (session.state.status !== "picking") {
+      if (isTerminal(session) || session.state.status !== "picking") {
+        disarm(gameId);
+        return { session, opened: false };
+      }
+      if (session.frozen) {
         disarm(gameId);
         return { session, opened: false };
       }
@@ -206,6 +214,7 @@ export function createRoundCoordinator(
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
       const session = await deps.sessions.get(gameId);
       if (!session) return;
+      if (session.frozen || isTerminal(session)) return;
       if (session.state.status !== "picking" || session.state.round !== round) {
         return;
       }
@@ -224,7 +233,11 @@ export function createRoundCoordinator(
   function roundStartMessage(
     session: GameSession,
   ): Extract<ServerMessage, { type: "game:roundStart" }> | null {
-    if (session.state.status !== "picking" || session.deadlineMs === null) {
+    if (
+      session.frozen ||
+      session.state.status !== "picking" ||
+      session.deadlineMs === null
+    ) {
       return null;
     }
     return {
@@ -250,7 +263,10 @@ export function createRoundCoordinator(
       const seat = seatFor(session, userId);
       if (!seat) return rejected("Not a participant in this game");
 
-      if (session.state.status !== "picking") {
+      if (session.frozen) {
+        return rejected("Game is paused while a player is disconnected");
+      }
+      if (isTerminal(session) || session.state.status !== "picking") {
         return rejected("Game is not accepting picks");
       }
       if (round !== session.state.round) {
@@ -295,11 +311,28 @@ export function createRoundCoordinator(
     return rejected("Round is no longer accepting picks");
   }
 
+  function pause(gameId: string): void {
+    disarm(gameId);
+  }
+
+  function resume(session: GameSession): void {
+    if (session.frozen || isTerminal(session)) return;
+    arm(session);
+    publishRoundStart(session);
+  }
+
   function dispose(): void {
     for (const gameId of [...armed.keys()]) {
       disarm(gameId);
     }
   }
 
-  return { beginRound, submitPick, roundStartMessage, dispose };
+  return {
+    beginRound,
+    submitPick,
+    roundStartMessage,
+    pause,
+    resume,
+    dispose,
+  };
 }

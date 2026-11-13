@@ -1,4 +1,5 @@
 import type { MatchmakingService } from "../matchmaking/service";
+import type { ReconnectService } from "../reconnect/service";
 import type { ParsedClientMessage } from "./schemas";
 import {
   seatFor,
@@ -17,6 +18,7 @@ export interface HandlerDependencies {
   send: (socket: AuthenticatedSocket, message: ServerMessage) => void;
   coordinator?: RoundCoordinator;
   matchmaking?: MatchmakingService;
+  reconnect?: ReconnectService;
 }
 
 function sendError(
@@ -63,6 +65,17 @@ async function handleJoin(
   socket: AuthenticatedSocket,
   gameId: string,
 ): Promise<void> {
+  if (deps.reconnect) {
+    const attached = await deps.reconnect.attachConnection(socket, gameId);
+    if (!attached) return;
+    if (attached.frozen || attached.outcome) return;
+    const round = await coordinator.beginRound(attached.id);
+    if (!round || round.opened) return;
+    const open = coordinator.roundStartMessage(round.session);
+    if (open) deps.send(socket, open);
+    return;
+  }
+
   const session = await deps.sessions.get(gameId);
   if (!session) {
     sendError(deps, socket, "Game not found");

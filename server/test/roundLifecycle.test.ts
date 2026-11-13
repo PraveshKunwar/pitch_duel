@@ -26,7 +26,11 @@ function deck(prefix: string, attacks: number[]): Card[] {
 }
 
 function socket(userId: string): AuthenticatedSocket {
-  return { userId, isAlive: true } as AuthenticatedSocket;
+  return {
+    userId,
+    connectionId: `${userId}-conn`,
+    isAlive: true,
+  } as AuthenticatedSocket;
 }
 
 async function setup() {

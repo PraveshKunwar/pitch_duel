@@ -4,6 +4,18 @@ import type { Card, GameState, PlayerState, StatCategory } from "../game/types";
 
 export type PlayerSeat = "player1" | "player2";
 
+export interface PlayerConnectionState {
+  connected: boolean;
+  connectionId: string | null;
+  disconnectedAt: number | null;
+  gracePeriodExpiresAt: number | null;
+}
+
+export type SessionOutcome =
+  | { kind: "completed" }
+  | { kind: "forfeit"; winner: PlayerSeat; forfeitedBy: PlayerSeat }
+  | { kind: "abandoned" };
+
 export interface GameSession {
   id: string;
   version: number;
@@ -14,6 +26,36 @@ export interface GameSession {
   deadlineMs: number | null;
   startedAtMs: number;
   endedAtMs: number | null;
+  connections: Record<PlayerSeat, PlayerConnectionState>;
+  frozen: boolean;
+  pausedRemainingMs: number | null;
+  outcome: SessionOutcome | null;
+}
+
+export function initialConnectionState(
+  connected = false,
+): PlayerConnectionState {
+  return {
+    connected,
+    connectionId: null,
+    disconnectedAt: null,
+    gracePeriodExpiresAt: null,
+  };
+}
+
+export function isTerminal(session: GameSession): boolean {
+  return session.state.status === "finished" || session.outcome !== null;
+}
+
+export function userIdForSeat(
+  session: GameSession,
+  seat: PlayerSeat,
+): string {
+  return seat === "player1" ? session.player1UserId : session.player2UserId;
+}
+
+export function opponentSeat(seat: PlayerSeat): PlayerSeat {
+  return seat === "player1" ? "player2" : "player1";
 }
 
 export interface CreateSessionInput {
@@ -54,6 +96,13 @@ export function buildSession(input: CreateSessionInput): GameSession {
     deadlineMs: null,
     startedAtMs: input.startedAtMs ?? Date.now(),
     endedAtMs: null,
+    connections: {
+      player1: initialConnectionState(false),
+      player2: initialConnectionState(false),
+    },
+    frozen: false,
+    pausedRemainingMs: null,
+    outcome: null,
   };
 }
 
@@ -94,7 +143,7 @@ export function createGameSessionStore(): GameSessionStore {
         version: saved.version,
         data: JSON.stringify(saved),
       });
-      if (saved.state.status === "finished") unpersisted.add(saved.id);
+      if (isTerminal(saved)) unpersisted.add(saved.id);
       return read(saved.id);
     },
 
