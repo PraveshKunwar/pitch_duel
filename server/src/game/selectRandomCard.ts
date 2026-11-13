@@ -1,6 +1,5 @@
 import type { Card } from "./types";
 
-/** Pick one card from the player's remaining hand. Does not remove it. */
 export function selectRandomCard(
   hand: Card[],
   random: () => number = Math.random,

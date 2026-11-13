@@ -22,7 +22,6 @@ export type ServerMessage =
       gameId: string;
       round: number;
       category: StatCategory;
-      /** Server clock. The browser timer is display-only. */
       deadlineMs: number;
     }
   | { type: "game:roundResult"; round: CompletedRound }

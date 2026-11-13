@@ -6,7 +6,8 @@ import { pool } from "./db/pool";
 import { redis } from "./db/redis";
 import { authRoutes } from "./http/auth";
 import { healthRoutes } from "./http/health";
-import { createGameSessionStore } from "./ws/gameSessions";
+import { createRedisGameSessionStore } from "./redis/gameSessionStore";
+import { createMatchFinalizer } from "./ws/matchFinalizer";
 import { setupWebSocket } from "./ws/server";
 
 const app = Fastify({ logger: true });
@@ -19,8 +20,9 @@ app.register(fastifyCookie);
 app.register(healthRoutes);
 app.register(authRoutes);
 
-const sessions = createGameSessionStore();
-setupWebSocket(app, { sessions });
+const sessions = createRedisGameSessionStore(redis);
+const finalizer = createMatchFinalizer({ sessions });
+setupWebSocket(app, { sessions, finalizer });
 
 async function main(): Promise<void> {
   await app.listen({ port: env.port, host: "0.0.0.0" });

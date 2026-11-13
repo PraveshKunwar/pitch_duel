@@ -3,12 +3,14 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import { createMessageHandler } from "./handlers";
 import type { GameSessionStore } from "./gameSessions";
+import type { MatchFinalizer } from "./matchFinalizer";
 import { createRoundCoordinator } from "./roundCoordinator";
 import { safeParseClientMessage } from "./schemas";
 import type { AuthenticatedSocket, ServerMessage } from "./types";
 import { verifyAndConsumeTicket } from "./tickets";
 
 const HEARTBEAT_MS = 30_000;
+const PERSIST_RETRY_MS = 30_000;
 
 export function sendMessage(socket: WebSocket, message: ServerMessage): void {
   if (socket.readyState === WebSocket.OPEN) {
@@ -16,7 +18,6 @@ export function sendMessage(socket: WebSocket, message: ServerMessage): void {
   }
 }
 
-/** Exported for heartbeat unit tests. */
 export function runHeartbeatTick(clients: Iterable<WebSocket>): void {
   for (const client of clients) {
     const socket = client as AuthenticatedSocket;
@@ -32,6 +33,7 @@ export function runHeartbeatTick(clients: Iterable<WebSocket>): void {
 export interface SetupWebSocketOptions {
   sessions: GameSessionStore;
   verifyAndConsumeTicket?: typeof verifyAndConsumeTicket;
+  finalizer?: MatchFinalizer;
 }
 
 export function setupWebSocket(
@@ -41,14 +43,50 @@ export function setupWebSocket(
   const verifyTicket = options.verifyAndConsumeTicket ?? verifyAndConsumeTicket;
   const connections = new Map<string, AuthenticatedSocket>();
 
+  const { finalizer } = options;
+
   const coordinator = createRoundCoordinator({
     sessions: options.sessions,
     getSocket: (userId) => connections.get(userId),
     send: sendMessage,
+    onGameFinished: finalizer
+      ? (session) => finalizer.finalize(session)
+      : undefined,
+    onError: (error, context) => {
+      app.log.error({ err: error, ...context }, "round coordinator failed");
+    },
   });
-  options.sessions.setOnCreated((session) => {
-    coordinator.beginRound(session);
-  });
+  options.sessions.setOnCreated((session) =>
+    coordinator.beginRound(session.id),
+  );
+
+  let recovering = false;
+  const recoverUnpersisted = async (): Promise<void> => {
+    if (!finalizer || recovering) return;
+    recovering = true;
+    try {
+      const { recovered, failed, lost } = await finalizer.recoverPending();
+      if (recovered.length > 0) {
+        app.log.info({ gameIds: recovered }, "persisted finished games");
+      }
+      for (const { gameId, error } of failed) {
+        app.log.error(
+          { err: error, gameId },
+          "finished game still unpersisted",
+        );
+      }
+      if (lost.length > 0) {
+        app.log.error(
+          { gameIds: lost },
+          "finished games expired before saving",
+        );
+      }
+    } catch (error) {
+      app.log.error(error, "unpersisted game recovery failed");
+    } finally {
+      recovering = false;
+    }
+  };
 
   const handleMessage = createMessageHandler({
     sessions: options.sessions,
@@ -113,7 +151,10 @@ export function setupWebSocket(
     }
     connections.set(socket.userId, socket);
 
-    app.log.info({ userId: socket.userId }, "authenticated websocket connected");
+    app.log.info(
+      { userId: socket.userId },
+      "authenticated websocket connected",
+    );
 
     socket.on("pong", () => {
       socket.isAlive = true;
@@ -170,9 +211,19 @@ export function setupWebSocket(
     runHeartbeatTick(wss.clients);
   }, HEARTBEAT_MS);
 
-  app.addHook("onClose", async () => {
+  let persistRetry: NodeJS.Timeout | null = null;
+  if (finalizer) {
+    app.addHook("onReady", recoverUnpersisted);
+    persistRetry = setInterval(() => {
+      void recoverUnpersisted();
+    }, PERSIST_RETRY_MS);
+    persistRetry.unref();
+  }
+
+  app.addHook("preClose", async () => {
     coordinator.dispose();
     clearInterval(heartbeat);
+    if (persistRetry) clearInterval(persistRetry);
     for (const client of wss.clients) {
       client.close(1001, "server shutting down");
     }
@@ -182,8 +233,6 @@ export function setupWebSocket(
     });
   });
 
-  // Attach upgrade after listen so app.server exists; hooks must be
-  // registered before listen (Fastify forbids addHook afterward).
   if (app.server.listening) {
     attachUpgrade();
   } else {

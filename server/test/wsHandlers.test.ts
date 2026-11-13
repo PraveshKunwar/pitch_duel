@@ -29,7 +29,7 @@ function socket(userId: string): AuthenticatedSocket {
 describe("websocket handlers", () => {
   it("lets a participant join and receive their own state", async () => {
     const sessions = createGameSessionStore();
-    const session = sessions.create({
+    const session = await sessions.create({
       player1UserId: "u1",
       player2UserId: "u2",
       player1Deck: deck("p1", [90, 80, 70, 60, 50]),
@@ -57,7 +57,7 @@ describe("websocket handlers", () => {
 
   it("rejects a non-participant join", async () => {
     const sessions = createGameSessionStore();
-    const session = sessions.create({
+    const session = await sessions.create({
       player1UserId: "u1",
       player2UserId: "u2",
       player1Deck: deck("p1", [90, 80, 70, 60, 50]),
@@ -90,7 +90,7 @@ describe("websocket handlers", () => {
 
   it("rejects a card the player does not own without mutating state", async () => {
     const sessions = createGameSessionStore();
-    const session = sessions.create({
+    const session = await sessions.create({
       player1UserId: "u1",
       player2UserId: "u2",
       player1Deck: deck("p1", [90, 80, 70, 60, 50]),
@@ -115,12 +115,12 @@ describe("websocket handlers", () => {
     });
 
     expect(sent[0]?.type).toBe("error");
-    expect(sessions.get(session.id)?.state).toEqual(before);
+    expect((await sessions.get(session.id))?.state).toEqual(before);
   });
 
   it("rejects an outdated round", async () => {
     const sessions = createGameSessionStore();
-    const session = sessions.create({
+    const session = await sessions.create({
       player1UserId: "u1",
       player2UserId: "u2",
       player1Deck: deck("p1", [90, 80, 70, 60, 50]),
@@ -147,7 +147,7 @@ describe("websocket handlers", () => {
 
   it("ignores a duplicate sequence without applying the pick twice", async () => {
     const sessions = createGameSessionStore();
-    const session = sessions.create({
+    const session = await sessions.create({
       player1UserId: "u1",
       player2UserId: "u2",
       player1Deck: deck("p1", [90, 80, 70, 60, 50]),
@@ -177,7 +177,7 @@ describe("websocket handlers", () => {
       cardId: session.state.player1.hand[1].ID,
     });
 
-    expect(sessions.get(session.id)?.state.player1.selectedCardId).toBe(cardId);
+    expect((await sessions.get(session.id))?.state.player1.selectedCardId).toBe(cardId);
     expect(sent.at(-1)).toEqual({
       type: "error",
       message: "Duplicate or outdated move",
@@ -186,7 +186,7 @@ describe("websocket handlers", () => {
 
   it("resolves the round and notifies both players when both have picked", async () => {
     const sessions = createGameSessionStore();
-    const session = sessions.create({
+    const session = await sessions.create({
       player1UserId: "u1",
       player2UserId: "u2",
       player1Deck: deck("p1", [90, 80, 70, 60, 50]),
@@ -228,13 +228,13 @@ describe("websocket handlers", () => {
     const u2 = inbox.get("u2") ?? [];
     expect(u1.some((message) => message.type === "game:roundResult")).toBe(true);
     expect(u2.some((message) => message.type === "game:roundResult")).toBe(true);
-    expect(sessions.get(session.id)?.state.round).toBe(2);
-    expect(sessions.get(session.id)?.state.player1.score).toBe(1);
+    expect((await sessions.get(session.id))?.state.round).toBe(2);
+    expect((await sessions.get(session.id))?.state.player1.score).toBe(1);
   });
 
   it("does not let a player submit a pick for another seat", async () => {
     const sessions = createGameSessionStore();
-    const session = sessions.create({
+    const session = await sessions.create({
       player1UserId: "u1",
       player2UserId: "u2",
       player1Deck: deck("p1", [90, 80, 70, 60, 50]),
@@ -248,7 +248,6 @@ describe("websocket handlers", () => {
       send: spy,
     });
 
-    // Identity comes from the socket, not the message body.
     await handle(socket("u2"), {
       type: "game:pick",
       gameId: session.id,
@@ -257,7 +256,7 @@ describe("websocket handlers", () => {
       cardId: session.state.player1.hand[0].ID,
     });
 
-    expect(sessions.get(session.id)?.state.player1.selectedCardId).toBeNull();
+    expect((await sessions.get(session.id))?.state.player1.selectedCardId).toBeNull();
     expect(spy.mock.calls[0][1]).toMatchObject({ type: "error" });
   });
 });

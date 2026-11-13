@@ -1,18 +1,19 @@
-/** Server-side round deadline. Clients do not own this clock. */
 export const ROUND_MS = 20_000;
 
 export interface TimerHandle {
   cancel(): void;
 }
 
+export type TimerCallback = () => void | Promise<void>;
+
 export interface TimerScheduler {
-  schedule(delayMs: number, callback: () => void): TimerHandle;
+  schedule(delayMs: number, callback: TimerCallback): TimerHandle;
 }
 
 export function createDefaultScheduler(): TimerScheduler {
   return {
     schedule(delayMs, callback) {
-      const timer = setTimeout(callback, delayMs);
+      const timer = setTimeout(() => void callback(), delayMs);
       timer.unref();
       return { cancel: () => clearTimeout(timer) };
     },
@@ -22,20 +23,14 @@ export function createDefaultScheduler(): TimerScheduler {
 export interface ScheduledTimer {
   dueAt: number;
   cancelled: boolean;
-  run: () => void;
+  run: TimerCallback;
 }
 
 export interface ControllableScheduler extends TimerScheduler {
   now(): number;
-  /** Move the clock without running due callbacks. */
   elapse(ms: number): void;
-  /** Run callbacks already due at the current clock. */
-  flush(): void;
-  /**
-   * Walk the clock forward, firing each deadline at its own due time
-   * so a round that arms the next timer is scheduled from that instant.
-   */
-  advance(ms: number): void;
+  flush(): Promise<void>;
+  advance(ms: number): Promise<void>;
   pending(): ScheduledTimer[];
   all(): ScheduledTimer[];
 }
@@ -73,22 +68,22 @@ export function createControllableScheduler(
     elapse(ms) {
       now += ms;
     },
-    flush() {
+    async flush() {
       for (;;) {
         const next = due(now)[0];
         if (!next) return;
         next.cancelled = true;
-        next.run();
+        await next.run();
       }
     },
-    advance(ms) {
+    async advance(ms) {
       const target = now + ms;
       for (;;) {
         const next = due(target)[0];
         if (!next) break;
         now = next.dueAt;
         next.cancelled = true;
-        next.run();
+        await next.run();
       }
       now = target;
     },

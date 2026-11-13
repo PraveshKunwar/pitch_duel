@@ -1,5 +1,9 @@
 import type { ParsedClientMessage } from "./schemas";
-import { visiblePlayerState, type GameSessionStore } from "./gameSessions";
+import {
+  seatFor,
+  visiblePlayerState,
+  type GameSessionStore,
+} from "./gameSessions";
 import {
   createRoundCoordinator,
   type RoundCoordinator,
@@ -51,13 +55,13 @@ async function handleJoin(
   socket: AuthenticatedSocket,
   gameId: string,
 ): Promise<void> {
-  const session = deps.sessions.get(gameId);
+  const session = await deps.sessions.get(gameId);
   if (!session) {
     sendError(deps, socket, "Game not found");
     return;
   }
 
-  const seat = deps.sessions.seatFor(session, socket.userId);
+  const seat = seatFor(session, socket.userId);
   if (!seat) {
     sendError(deps, socket, "Not a participant in this game");
     return;
@@ -68,7 +72,10 @@ async function handleJoin(
     type: "game:state",
     state: visiblePlayerState(session.state, seat),
   });
-  const open = coordinator.roundStartMessage(session);
+
+  const round = await coordinator.beginRound(session.id);
+  if (!round || round.opened) return;
+  const open = coordinator.roundStartMessage(round.session);
   if (open) deps.send(socket, open);
 }
 
@@ -78,37 +85,11 @@ async function handlePick(
   socket: AuthenticatedSocket,
   message: Extract<ParsedClientMessage, { type: "game:pick" }>,
 ): Promise<void> {
-  const session = deps.sessions.get(message.gameId);
-  if (!session) {
-    sendError(deps, socket, "Game not found");
-    return;
-  }
-
-  const seat = deps.sessions.seatFor(session, socket.userId);
-  if (!seat) {
-    sendError(deps, socket, "Not a participant in this game");
-    return;
-  }
-
-  if (session.state.status !== "picking") {
-    sendError(deps, socket, "Game is not accepting picks");
-    return;
-  }
-
-  if (message.round !== session.state.round) {
-    sendError(deps, socket, "Incorrect round number");
-    return;
-  }
-
-  if (message.sequence <= session.lastSequence[seat]) {
-    sendError(deps, socket, "Duplicate or outdated move");
-    return;
-  }
-
-  const result = coordinator.submitPick({
-    session,
-    seat,
+  const result = await coordinator.submitPick({
+    gameId: message.gameId,
+    userId: socket.userId,
     round: message.round,
+    sequence: message.sequence,
     cardId: message.cardId,
   });
 
@@ -117,13 +98,10 @@ async function handlePick(
     return;
   }
 
-  session.lastSequence[seat] = message.sequence;
-  deps.sessions.save(session);
-
   if (result.status === "waiting") {
     deps.send(socket, {
       type: "game:state",
-      state: visiblePlayerState(session.state, seat),
+      state: visiblePlayerState(result.session.state, result.seat),
     });
   }
 }

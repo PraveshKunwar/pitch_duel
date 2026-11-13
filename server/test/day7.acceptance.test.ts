@@ -106,7 +106,7 @@ describe("day 7 acceptance", () => {
     "runs a full authenticated match: immediate resolve, 20s auto-pick, finished",
     async () => {
       const startedAt = Date.now();
-      const session = sessions.create({
+      const session = await sessions.create({
         player1UserId: "day7-p1",
         player2UserId: "day7-p2",
         player1Deck: deck("p1", [90, 80, 70, 60, 50]),
@@ -146,7 +146,6 @@ describe("day 7 acceptance", () => {
       expect(open1.deadlineMs).toBeGreaterThanOrEqual(startedAt + ROUND_MS);
       expect(open1.deadlineMs).toBeLessThan(startedAt + ROUND_MS + 5_000);
 
-      // Round 1 — both pick → resolve immediately (no full wait).
       const round1Before = Date.now();
       const p1Card1 = session.state.player1.hand[0].ID;
       const p2Card1 = session.state.player2.hand[0].ID;
@@ -177,16 +176,15 @@ describe("day 7 acceptance", () => {
       expect(r1a.round.card2.ID).toBe(p2Card1);
       expect(r1b.round.round).toBe(1);
       expect(Date.now() - round1Before).toBeLessThan(2_000);
-      expect(sessions.get(session.id)?.state.round).toBe(2);
+      expect((await sessions.get(session.id))?.state.round).toBe(2);
 
       await q1.nextOfType("game:roundStart");
       await q2.nextOfType("game:roundStart");
 
-      // Round 2 — p1 picks, p2 stays idle → 20s auto-pick.
-      const idleHand = [
-        ...(sessions.get(session.id)?.state.player2.hand ?? []),
-      ].map((c) => c.ID);
-      const p1Card2 = sessions.get(session.id)?.state.player1.hand[0].ID;
+      const idleHand = (
+        (await sessions.get(session.id))?.state.player2.hand ?? []
+      ).map((c) => c.ID);
+      const p1Card2 = (await sessions.get(session.id))?.state.player1.hand[0].ID;
       if (!p1Card2) throw new Error("expected p1 card");
 
       const idleStarted = Date.now();
@@ -210,14 +208,13 @@ describe("day 7 acceptance", () => {
       expect(r2a.round.card1.ID).toBe(p1Card2);
       expect(idleHand).toContain(r2a.round.card2.ID);
       expect(r2b.round.card2.ID).toBe(r2a.round.card2.ID);
-      expect(sessions.get(session.id)?.state.round).toBe(3);
+      expect((await sessions.get(session.id))?.state.round).toBe(3);
 
       await q1.nextOfType("game:roundStart");
       await q2.nextOfType("game:roundStart");
 
-      // Rounds 3–5 — both pick to finish.
       for (let round = 3; round <= 5; round += 1) {
-        const state = sessions.get(session.id)?.state;
+        const state = (await sessions.get(session.id))?.state;
         const c1 = state?.player1.hand[0]?.ID;
         const c2 = state?.player2.hand[0]?.ID;
         if (!c1 || !c2) throw new Error(`missing cards for round ${round}`);
@@ -250,13 +247,14 @@ describe("day 7 acceptance", () => {
         }
       }
 
-      const finished = sessions.get(session.id)?.state;
+      const ended = await sessions.get(session.id);
+      const finished = ended?.state;
       expect(finished?.status).toBe("finished");
       expect(finished?.round).toBe(5);
       expect(finished?.history).toHaveLength(5);
       expect(finished?.player1.hand).toHaveLength(0);
       expect(finished?.player2.hand).toHaveLength(0);
-      expect(finished?.deadlineMs ?? null).toBeNull();
+      expect(ended?.deadlineMs).toBeNull();
 
       ws1.close();
       ws2.close();

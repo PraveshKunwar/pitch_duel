@@ -6,81 +6,111 @@ export type PlayerSeat = "player1" | "player2";
 
 export interface GameSession {
   id: string;
+  version: number;
   state: GameState;
   player1UserId: string;
   player2UserId: string;
-  /**
-   * Last accepted pick sequence per seat.
-   * Day-6 limitation: process-local only. Not safe across multiple app instances
-   * until live game state moves to Redis (day 8 / day 11).
-   */
   lastSequence: Record<PlayerSeat, number>;
-  /**
-   * Epoch ms when the open round stops taking picks.
-   * Null before the round is armed and after it resolves.
-   */
   deadlineMs: number | null;
-  /**
-   * Round number whose resolution has been claimed.
-   * A round can move from open to claimed only once.
-   * Process-local stand-in for a Redis `SET NX` claim (day 8/11).
-   */
-  claimedRound: number | null;
+  startedAtMs: number;
+  endedAtMs: number | null;
 }
 
+export interface CreateSessionInput {
+  player1UserId: string;
+  player2UserId: string;
+  player1Deck: Card[];
+  player2Deck: Card[];
+  firstCategory?: StatCategory;
+  startedAtMs?: number;
+}
+
+export type SessionCreatedListener = (
+  session: GameSession,
+) => void | Promise<unknown>;
+
 export interface GameSessionStore {
-  create(input: {
-    player1UserId: string;
-    player2UserId: string;
-    player1Deck: Card[];
-    player2Deck: Card[];
-    firstCategory?: StatCategory;
-  }): GameSession;
-  get(gameId: string): GameSession | undefined;
-  save(session: GameSession): void;
-  seatFor(session: GameSession, userId: string): PlayerSeat | null;
-  /** Fired after a session is stored. Used to arm the round timer. */
-  setOnCreated(listener: ((session: GameSession) => void) | null): void;
+  create(input: CreateSessionInput): Promise<GameSession>;
+  get(gameId: string): Promise<GameSession | null>;
+  update(next: GameSession): Promise<GameSession | null>;
+  activeGameFor(userId: string): Promise<string | null>;
+  unpersisted(): Promise<string[]>;
+  markPersisted(gameId: string, userIds?: string[]): Promise<void>;
+  setOnCreated(listener: SessionCreatedListener | null): void;
+}
+
+export function buildSession(input: CreateSessionInput): GameSession {
+  return {
+    id: randomUUID(),
+    version: 1,
+    state: createGame(
+      input.player1Deck,
+      input.player2Deck,
+      input.firstCategory ?? "attack",
+    ),
+    player1UserId: input.player1UserId,
+    player2UserId: input.player2UserId,
+    lastSequence: { player1: 0, player2: 0 },
+    deadlineMs: null,
+    startedAtMs: input.startedAtMs ?? Date.now(),
+    endedAtMs: null,
+  };
 }
 
 export function createGameSessionStore(): GameSessionStore {
-  const sessions = new Map<string, GameSession>();
-  let onCreated: ((session: GameSession) => void) | null = null;
+  const sessions = new Map<string, { version: number; data: string }>();
+  const userGames = new Map<string, string>();
+  const unpersisted = new Set<string>();
+  let onCreated: SessionCreatedListener | null = null;
+
+  const read = (gameId: string): GameSession | null => {
+    const stored = sessions.get(gameId);
+    return stored ? (JSON.parse(stored.data) as GameSession) : null;
+  };
 
   return {
-    create({
-      player1UserId,
-      player2UserId,
-      player1Deck,
-      player2Deck,
-      firstCategory = "attack",
-    }) {
-      const session: GameSession = {
-        id: randomUUID(),
-        state: createGame(player1Deck, player2Deck, firstCategory),
-        player1UserId,
-        player2UserId,
-        lastSequence: { player1: 0, player2: 0 },
-        deadlineMs: null,
-        claimedRound: null,
-      };
-      sessions.set(session.id, session);
-      onCreated?.(session);
-      return session;
+    async create(input) {
+      const session = buildSession(input);
+      sessions.set(session.id, {
+        version: session.version,
+        data: JSON.stringify(session),
+      });
+      userGames.set(session.player1UserId, session.id);
+      userGames.set(session.player2UserId, session.id);
+      if (!onCreated) return session;
+      await onCreated(session);
+      return read(session.id) ?? session;
     },
 
-    get(gameId) {
-      return sessions.get(gameId);
+    async get(gameId) {
+      return read(gameId);
     },
 
-    save(session) {
-      sessions.set(session.id, session);
+    async update(next) {
+      const stored = sessions.get(next.id);
+      if (!stored || stored.version !== next.version) return null;
+      const saved: GameSession = { ...next, version: next.version + 1 };
+      sessions.set(saved.id, {
+        version: saved.version,
+        data: JSON.stringify(saved),
+      });
+      if (saved.state.status === "finished") unpersisted.add(saved.id);
+      return read(saved.id);
     },
 
-    seatFor(session, userId) {
-      if (session.player1UserId === userId) return "player1";
-      if (session.player2UserId === userId) return "player2";
-      return null;
+    async activeGameFor(userId) {
+      return userGames.get(userId) ?? null;
+    },
+
+    async unpersisted() {
+      return [...unpersisted];
+    },
+
+    async markPersisted(gameId, userIds = []) {
+      unpersisted.delete(gameId);
+      for (const userId of userIds) {
+        if (userGames.get(userId) === gameId) userGames.delete(userId);
+      }
     },
 
     setOnCreated(listener) {
@@ -89,7 +119,15 @@ export function createGameSessionStore(): GameSessionStore {
   };
 }
 
-/** Own seat only — never expose the opponent's hand or hidden pick. */
+export function seatFor(
+  session: GameSession,
+  userId: string,
+): PlayerSeat | null {
+  if (session.player1UserId === userId) return "player1";
+  if (session.player2UserId === userId) return "player2";
+  return null;
+}
+
 export function visiblePlayerState(
   state: GameState,
   seat: PlayerSeat,

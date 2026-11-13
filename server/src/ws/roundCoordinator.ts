@@ -3,32 +3,43 @@ import { selectRandomCard } from "../game/selectRandomCard";
 import { submitPick as applyPick } from "../game/submitPick";
 import {
   nextCategory,
+  seatFor,
   visiblePlayerState,
   type GameSession,
   type GameSessionStore,
   type PlayerSeat,
 } from "./gameSessions";
-import { createDefaultScheduler, ROUND_MS, type TimerScheduler } from "./timers";
+import {
+  createDefaultScheduler,
+  ROUND_MS,
+  type TimerScheduler,
+} from "./timers";
 import type { AuthenticatedSocket, ServerMessage } from "./types";
 
 export type PickResult =
   | { status: "rejected"; message: string }
-  | { status: "waiting" }
+  | { status: "waiting"; session: GameSession; seat: PlayerSeat }
   | { status: "resolved" };
+
+export interface PickInput {
+  gameId: string;
+  userId: string;
+  round: number;
+  sequence: number;
+  cardId: string;
+}
 
 interface ArmedTimer {
   token: number;
+  round: number;
   handle: { cancel(): void };
 }
 
 export interface RoundCoordinator {
-  beginRound(session: GameSession): void;
-  submitPick(input: {
-    session: GameSession;
-    seat: PlayerSeat;
-    round: number;
-    cardId: string;
-  }): PickResult;
+  beginRound(
+    gameId: string,
+  ): Promise<{ session: GameSession; opened: boolean } | null>;
+  submitPick(input: PickInput): Promise<PickResult>;
   roundStartMessage(
     session: GameSession,
   ): Extract<ServerMessage, { type: "game:roundStart" }> | null;
@@ -43,21 +54,14 @@ export interface RoundCoordinatorDependencies {
   now?: () => number;
   random?: () => number;
   roundMs?: number;
+  onGameFinished?: (session: GameSession) => Promise<unknown>;
+  onError?: (
+    error: unknown,
+    context: { gameId: string; during: string },
+  ) => void;
 }
 
-/**
- * A round may leave `picking` only once. Synchronous in this process.
- * Day 8/11 should replace this with an atomic Redis claim (`SET NX`)
- * before any resolved state is published. Do not publish or arm the next
- * round until this returns true.
- */
-export function tryClaimRound(session: GameSession, round: number): boolean {
-  if (session.state.status !== "picking") return false;
-  if (session.state.round !== round) return false;
-  if (session.claimedRound === round) return false;
-  session.claimedRound = round;
-  return true;
-}
+const MAX_ATTEMPTS = 5;
 
 export function createRoundCoordinator(
   deps: RoundCoordinatorDependencies,
@@ -66,6 +70,9 @@ export function createRoundCoordinator(
   const now = deps.now ?? (() => Date.now());
   const random = deps.random ?? Math.random;
   const roundMs = deps.roundMs ?? ROUND_MS;
+  const reportError =
+    deps.onError ??
+    ((error, context) => console.error("round coordinator", context, error));
   const armed = new Map<string, ArmedTimer>();
   let nextToken = 1;
 
@@ -74,6 +81,26 @@ export function createRoundCoordinator(
     if (!current) return;
     current.handle.cancel();
     armed.delete(gameId);
+  }
+
+  function arm(session: GameSession): void {
+    if (session.deadlineMs === null) return;
+    const gameId = session.id;
+    const round = session.state.round;
+    if (armed.get(gameId)?.round === round) return;
+    disarm(gameId);
+
+    const token = nextToken++;
+    const delayMs = Math.max(0, session.deadlineMs - now());
+    const handle = scheduler.schedule(delayMs, () => {
+      const current = armed.get(gameId);
+      if (!current || current.token !== token) return;
+      armed.delete(gameId);
+      return resolveOnTimeout(gameId, round).catch((error: unknown) => {
+        reportError(error, { gameId, during: "round timeout" });
+      });
+    });
+    armed.set(gameId, { token, round, handle });
   }
 
   function publish(session: GameSession, message: ServerMessage): void {
@@ -104,73 +131,94 @@ export function createRoundCoordinator(
     }
   }
 
-  function commitResolved(
-    session: GameSession,
-    round: number,
-    nextState: GameSession["state"],
-  ): boolean {
-    if (!tryClaimRound(session, round)) return false;
-    disarm(session.id);
-    session.state = nextState;
-    session.deadlineMs = null;
-    deps.sessions.save(session);
-    publishResolved(session);
-    beginRound(session);
-    return true;
+  async function finish(session: GameSession): Promise<void> {
+    if (!deps.onGameFinished) return;
+    try {
+      await deps.onGameFinished(session);
+    } catch (error) {
+      reportError(error, { gameId: session.id, during: "match persistence" });
+    }
   }
 
-  function resolveWithPicks(
+  async function commitResolved(
     session: GameSession,
-    round: number,
     picked: GameSession["state"],
-  ): boolean {
-    const resolved = resolveCurrentRound(
+    lastSequence: GameSession["lastSequence"] = session.lastSequence,
+  ): Promise<boolean> {
+    const state = resolveCurrentRound(
       picked,
       nextCategory(picked.category),
       random,
     );
-    return commitResolved(session, round, resolved);
-  }
-
-  function beginRound(session: GameSession): void {
-    if (session.state.status !== "picking") {
-      disarm(session.id);
-      session.deadlineMs = null;
-      deps.sessions.save(session);
-      return;
-    }
-    if (armed.has(session.id)) return;
-
-    const round = session.state.round;
-    session.deadlineMs = now() + roundMs;
-    deps.sessions.save(session);
-
-    const token = nextToken++;
-    const handle = scheduler.schedule(roundMs, () => {
-      const current = armed.get(session.id);
-      if (!current || current.token !== token) return;
-      armed.delete(session.id);
-      resolveOnTimeout(session.id, round);
+    const finished = state.status === "finished";
+    const at = now();
+    const saved = await deps.sessions.update({
+      ...session,
+      state,
+      lastSequence,
+      deadlineMs: finished ? null : at + roundMs,
+      endedAtMs: finished ? at : null,
     });
-    armed.set(session.id, { token, handle });
-    publishRoundStart(session);
+    if (!saved) return false;
+
+    disarm(saved.id);
+    publishResolved(saved);
+    if (finished) {
+      await finish(saved);
+    } else {
+      arm(saved);
+      publishRoundStart(saved);
+    }
+    return true;
   }
 
-  function resolveOnTimeout(gameId: string, round: number): void {
-    const session = deps.sessions.get(gameId);
-    if (!session) return;
-    if (session.state.status !== "picking" || session.state.round !== round) {
-      return;
-    }
-    if (session.claimedRound === round) return;
+  async function beginRound(
+    gameId: string,
+  ): Promise<{ session: GameSession; opened: boolean } | null> {
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      const session = await deps.sessions.get(gameId);
+      if (!session) return null;
+      if (session.state.status !== "picking") {
+        disarm(gameId);
+        return { session, opened: false };
+      }
+      if (session.deadlineMs !== null) {
+        arm(session);
+        return { session, opened: false };
+      }
 
-    let picked = session.state;
-    for (const seat of ["player1", "player2"] as const) {
-      if (picked[seat].selectedCardId !== null) continue;
-      const card = selectRandomCard(picked[seat].hand, random);
-      picked = applyPick(picked, seat, card.ID);
+      const opened = await deps.sessions.update({
+        ...session,
+        deadlineMs: now() + roundMs,
+      });
+      if (!opened) continue;
+      arm(opened);
+      publishRoundStart(opened);
+      return { session: opened, opened: true };
     }
-    resolveWithPicks(session, round, picked);
+    throw new Error(`Could not open a round for game ${gameId}`);
+  }
+
+  async function resolveOnTimeout(
+    gameId: string,
+    round: number,
+  ): Promise<void> {
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      const session = await deps.sessions.get(gameId);
+      if (!session) return;
+      if (session.state.status !== "picking" || session.state.round !== round) {
+        return;
+      }
+
+      let picked = session.state;
+      for (const seat of ["player1", "player2"] as const) {
+        if (picked[seat].selectedCardId !== null) continue;
+        const card = selectRandomCard(picked[seat].hand, random);
+        picked = applyPick(picked, seat, card.ID);
+      }
+      if (await commitResolved(session, picked)) return;
+    }
+    throw new Error(`Could not resolve round ${round} of game ${gameId}`);
   }
 
   function roundStartMessage(
@@ -179,7 +227,6 @@ export function createRoundCoordinator(
     if (session.state.status !== "picking" || session.deadlineMs === null) {
       return null;
     }
-    if (session.claimedRound === session.state.round) return null;
     return {
       type: "game:roundStart",
       gameId: session.id,
@@ -189,47 +236,63 @@ export function createRoundCoordinator(
     };
   }
 
-  function submitPick(input: {
-    session: GameSession;
-    seat: PlayerSeat;
-    round: number;
-    cardId: string;
-  }): PickResult {
-    const { session, seat, round, cardId } = input;
-    if (session.state.status !== "picking") {
-      return { status: "rejected", message: "Game is not accepting picks" };
-    }
-    if (round !== session.state.round) {
-      return { status: "rejected", message: "Incorrect round number" };
-    }
-    if (session.claimedRound === round) {
-      return { status: "rejected", message: "Round is no longer accepting picks" };
-    }
-    if (session.deadlineMs !== null && now() >= session.deadlineMs) {
-      return { status: "rejected", message: "Round deadline has passed" };
-    }
+  async function submitPick(input: PickInput): Promise<PickResult> {
+    const { gameId, userId, round, sequence, cardId } = input;
+    const rejected = (message: string): PickResult => ({
+      status: "rejected",
+      message,
+    });
 
-    let picked: GameSession["state"];
-    try {
-      picked = applyPick(session.state, seat, cardId);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Invalid pick";
-      return { status: "rejected", message };
-    }
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      const session = await deps.sessions.get(gameId);
+      if (!session) return rejected("Game not found");
 
-    const bothPicked =
-      picked.player1.selectedCardId !== null &&
-      picked.player2.selectedCardId !== null;
-    if (!bothPicked) {
-      session.state = picked;
-      deps.sessions.save(session);
-      return { status: "waiting" };
-    }
+      const seat = seatFor(session, userId);
+      if (!seat) return rejected("Not a participant in this game");
 
-    if (!resolveWithPicks(session, round, picked)) {
-      return { status: "rejected", message: "Round is no longer accepting picks" };
+      if (session.state.status !== "picking") {
+        return rejected("Game is not accepting picks");
+      }
+      if (round !== session.state.round) {
+        return rejected("Incorrect round number");
+      }
+      if (sequence <= session.lastSequence[seat]) {
+        return rejected("Duplicate or outdated move");
+      }
+      if (session.deadlineMs !== null && now() >= session.deadlineMs) {
+        return rejected("Round deadline has passed");
+      }
+
+      let picked: GameSession["state"];
+      try {
+        picked = applyPick(session.state, seat, cardId);
+      } catch (error) {
+        return rejected(
+          error instanceof Error ? error.message : "Invalid pick",
+        );
+      }
+
+      const lastSequence = { ...session.lastSequence, [seat]: sequence };
+      const bothPicked =
+        picked.player1.selectedCardId !== null &&
+        picked.player2.selectedCardId !== null;
+
+      if (!bothPicked) {
+        const saved = await deps.sessions.update({
+          ...session,
+          state: picked,
+          lastSequence,
+        });
+        if (!saved) continue;
+        arm(saved);
+        return { status: "waiting", session: saved, seat };
+      }
+
+      if (await commitResolved(session, picked, lastSequence)) {
+        return { status: "resolved" };
+      }
     }
-    return { status: "resolved" };
+    return rejected("Round is no longer accepting picks");
   }
 
   function dispose(): void {

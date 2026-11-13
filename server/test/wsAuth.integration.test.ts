@@ -116,7 +116,7 @@ describe("websocket auth integration", () => {
 
   it("authenticates from the ticket and supports two players in a game", async () => {
     const startedAt = Date.now();
-    const session = sessions.create({
+    const session = await sessions.create({
       player1UserId: "p1",
       player2UserId: "p2",
       player1Deck: deck("a"),
@@ -192,7 +192,7 @@ describe("websocket auth integration", () => {
     await expect(q2.nextOfType("game:roundResult")).resolves.toMatchObject({
       type: "game:roundResult",
     });
-    expect(sessions.get(session.id)?.state.round).toBe(2);
+    expect((await sessions.get(session.id))?.state.round).toBe(2);
 
     ws1.close();
     ws2.close();
