@@ -86,6 +86,12 @@ export function useAuth() {
     return user;
   }, []);
 
+  const applyRating = useCallback((rating: number) => {
+    setState((s) =>
+      s.user ? { ...s, user: { ...s.user, rating } } : s,
+    );
+  }, []);
+
   return {
     user: state.user,
     loading: state.loading,
@@ -94,6 +100,7 @@ export function useAuth() {
     register,
     logout,
     refreshUser,
+    applyRating,
     clearError: () => setState((s) => ({ ...s, error: null })),
   };
 }

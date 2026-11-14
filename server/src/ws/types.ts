@@ -80,6 +80,9 @@ export type ServerMessage =
       type: "game:ended";
       reason: "completed" | "forfeit" | "abandoned";
       winner: "player1" | "player2" | null;
+      /** Post-match Elo after Postgres commit (omitted if persistence failed). */
+      ratings?: { player1: number; player2: number };
+      ratingDelta?: number | null;
     }
   | {
       type: "game:draftState";

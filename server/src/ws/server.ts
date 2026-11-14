@@ -62,7 +62,12 @@ export interface SetupWebSocketOptions {
     getSocket: (userId: string) => AuthenticatedSocket | undefined;
     send: typeof sendMessage;
     fanout: GameFanout;
-    onMatchEnded?: (session: import("./gameSessions").GameSession) => Promise<unknown>;
+    onMatchEnded?: (
+      session: import("./gameSessions").GameSession,
+    ) => Promise<{
+      ratings?: { player1: number; player2: number };
+      ratingDelta?: number | null;
+    } | void>;
     onResumed?: (session: import("./gameSessions").GameSession) => void | Promise<unknown>;
   }) => ReconnectService;
   gracePeriodMs?: number;

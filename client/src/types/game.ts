@@ -164,6 +164,8 @@ export type ServerMessage =
       type: "game:ended";
       reason: "completed" | "forfeit" | "abandoned";
       winner: PlayerSeat | null;
+      ratings?: { player1: number; player2: number };
+      ratingDelta?: number | null;
     }
   | {
       type: "game:draftState";

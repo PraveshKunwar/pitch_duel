@@ -34,6 +34,8 @@ export type GameClientState = {
   pickPending: boolean;
   endedReason: "completed" | "forfeit" | "abandoned" | null;
   endedWinner: PlayerSeat | null;
+  /** Your post-match Elo from game:ended (live update, no refresh). */
+  yourNewRating: number | null;
   opponentUsername: string | null;
   opponentRating: number | null;
   phase: SessionPhase;
@@ -61,6 +63,7 @@ const initialState: GameClientState = {
   pickPending: false,
   endedReason: null,
   endedWinner: null,
+  yourNewRating: null,
   opponentUsername: null,
   opponentRating: null,
   phase: "playing",
@@ -97,6 +100,7 @@ export function useGameSocket(enabled: boolean) {
             opponentRating: message.opponentRating,
             endedReason: null,
             endedWinner: null,
+            yourNewRating: null,
             lastRoundResult: null,
             history: [],
             draft: null,
@@ -253,10 +257,40 @@ export function useGameSocket(enabled: boolean) {
           let connection: ConnectionUiState = "match_completed";
           if (message.reason === "forfeit") connection = "opponent_forfeited";
           if (message.reason === "abandoned") connection = "match_abandoned";
+          const seat = prev.match?.yourSeat;
+          const ratings = message.ratings;
+          let match = prev.match;
+          let yourNewRating: number | null = null;
+          if (match) {
+            const status =
+              message.reason === "abandoned"
+                ? "abandoned"
+                : message.reason === "forfeit"
+                  ? "forfeited"
+                  : "finished";
+            match = { ...match, status };
+            if (ratings && seat) {
+              const youRating = ratings[seat];
+              const oppSeat = seat === "player1" ? "player2" : "player1";
+              yourNewRating = youRating;
+              match = {
+                ...match,
+                you: { ...match.you, rating: youRating },
+                opponent: {
+                  ...match.opponent,
+                  rating: ratings[oppSeat],
+                },
+              };
+            }
+          } else if (ratings && seat) {
+            yourNewRating = ratings[seat];
+          }
           return {
             ...prev,
             endedReason: message.reason,
             endedWinner: message.winner,
+            yourNewRating,
+            match,
             connection,
             pickPending: false,
             matchmaking: "idle",
@@ -344,7 +378,9 @@ export function useGameSocket(enabled: boolean) {
       error: null,
       endedReason: null,
       endedWinner: null,
+      yourNewRating: null,
       lastRoundResult: null,
+      matchmaking: "queued",
       matchmakingMode: mode,
     }));
     socketRef.current?.send({ type: "matchmaking:join", mode });

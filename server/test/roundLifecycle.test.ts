@@ -312,6 +312,16 @@ describe("round lifecycle", () => {
     expect(state?.player1.hand).toHaveLength(0);
     expect(ctx.clock.pending()).toHaveLength(0);
     expect((await ctx.sessions.get(ctx.session.id))?.deadlineMs).toBeNull();
+    expect(messages(ctx.inbox, "u1")).toContainEqual({
+      type: "game:ended",
+      reason: "completed",
+      winner: "player1",
+    });
+    expect(messages(ctx.inbox, "u2")).toContainEqual({
+      type: "game:ended",
+      reason: "completed",
+      winner: "player1",
+    });
   });
 
   it("finishes five idle rounds with distinct automatic cards", async () => {

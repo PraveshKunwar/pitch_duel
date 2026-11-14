@@ -48,7 +48,10 @@ export interface ReconnectServiceDependencies {
   getSocket: (userId: string) => AuthenticatedSocket | undefined;
   send: (socket: AuthenticatedSocket, message: ServerMessage) => void;
   fanout?: GameFanout;
-  onMatchEnded?: (session: GameSession) => Promise<unknown>;
+  onMatchEnded?: (session: GameSession) => Promise<{
+    ratings?: { player1: number; player2: number };
+    ratingDelta?: number | null;
+  } | void>;
   onResumed?: (session: GameSession) => void | Promise<unknown>;
   scheduler?: TimerScheduler;
   now?: () => number;
@@ -219,13 +222,25 @@ export function createReconnectService(
         : session.outcome?.kind === "forfeit"
           ? "forfeit"
           : "completed";
-    await fanout.gameEnded(session, { reason, winner });
-    if (!deps.onMatchEnded) return;
-    try {
-      await deps.onMatchEnded(session);
-    } catch (error) {
-      reportError(error, { gameId: session.id, during: "match persistence" });
+    let ratings: { player1: number; player2: number } | undefined;
+    let ratingDelta: number | null | undefined;
+    if (deps.onMatchEnded) {
+      try {
+        const recorded = await deps.onMatchEnded(session);
+        if (recorded?.ratings) ratings = recorded.ratings;
+        if (recorded && "ratingDelta" in recorded) {
+          ratingDelta = recorded.ratingDelta ?? null;
+        }
+      } catch (error) {
+        reportError(error, { gameId: session.id, during: "match persistence" });
+      }
     }
+    await fanout.gameEnded(session, {
+      reason,
+      winner,
+      ratings,
+      ratingDelta,
+    });
   }
 
   async function expireGrace(

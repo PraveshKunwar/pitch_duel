@@ -117,6 +117,10 @@ export function createGameEventRouter(
             type: "game:ended",
             reason: event.reason,
             winner: event.winner,
+            ...(event.ratings ? { ratings: event.ratings } : {}),
+            ...(event.ratingDelta !== undefined
+              ? { ratingDelta: event.ratingDelta }
+              : {}),
           });
           coordinator.pause(session.id);
           reconnect.mirrorRemoteSession(session);

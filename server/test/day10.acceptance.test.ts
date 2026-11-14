@@ -247,10 +247,14 @@ describe("day 10 acceptance", () => {
 
     await server.clock.advance(500);
     const ended = await clients[1].next("game:ended");
-    expect(ended).toEqual({
+    expect(ended).toMatchObject({
       type: "game:ended",
       reason: "forfeit",
       winner: "player2",
+    });
+    expect(ended.ratings).toEqual({
+      player1: expect.any(Number),
+      player2: expect.any(Number),
     });
 
     const match = await eventually(() => findMatchByGameId(gameId));

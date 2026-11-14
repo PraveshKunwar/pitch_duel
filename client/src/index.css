@@ -312,6 +312,15 @@ small,
   padding: 28px;
 }
 
+.queue-modal {
+  width: min(480px, 100%);
+  text-align: center;
+}
+
+.queue-modal .result-stats {
+  text-align: left;
+}
+
 .arena {
   margin-top: 24px;
   background:

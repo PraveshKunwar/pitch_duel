@@ -38,6 +38,8 @@ export type GameBusEvent =
       gameId: string;
       reason: "completed" | "forfeit" | "abandoned";
       winner: PlayerSeat | null;
+      ratings?: { player1: number; player2: number };
+      ratingDelta?: number | null;
       originInstanceId: string;
     };
 

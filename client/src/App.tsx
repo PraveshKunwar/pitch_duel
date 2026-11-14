@@ -17,10 +17,13 @@ import type { AppScreen, GameMode } from "./types/game";
 
 function topBarActive(
   screen: AppScreen,
+  queued = false,
 ): "lobby" | "game" | "leaderboard" | "auth" | "matchmaking" {
   if (screen === "auth") return "auth";
   if (screen === "leaderboard") return "leaderboard";
-  if (screen === "matchmaking" || screen === "mode_select") return "matchmaking";
+  if (queued || screen === "matchmaking" || screen === "mode_select") {
+    return "matchmaking";
+  }
   if (screen === "game" || screen === "draft" || screen === "tactics") {
     return "game";
   }
@@ -36,8 +39,17 @@ export default function App() {
     "local" | "ranked"
   >("local");
   const [exitConfirm, setExitConfirm] = useState(false);
+  const [leaveQueueConfirm, setLeaveQueueConfirm] = useState(false);
   const online = useGameSocket(Boolean(auth.user));
   const local = useLocalGame(auth.user);
+
+  const queued =
+    online.state.matchmaking === "queued" ||
+    online.state.matchmaking === "found";
+  const queueOverlay =
+    queued ||
+    online.state.matchmaking === "timeout" ||
+    online.state.matchmaking === "cancelled";
 
   const inOnlineMatch =
     playMode === "online" &&
@@ -56,8 +68,7 @@ export default function App() {
   const inRankedSetup =
     playMode === "online" &&
     (screen === "mode_select" ||
-      online.state.matchmaking === "queued" ||
-      online.state.matchmaking === "found" ||
+      queued ||
       online.state.phase === "drafting" ||
       online.state.phase === "choosing_tactic");
   const inActiveMatch =
@@ -85,8 +96,11 @@ export default function App() {
 
     if (playMode === "online") {
       const mm = online.state.matchmaking;
+      // Queue overlay sits on lobby — never bounce away while searching.
       if (mm === "queued" || mm === "found") {
-        setScreen("matchmaking");
+        if (screen !== "lobby" && screen !== "mode_select") {
+          setScreen("lobby");
+        }
         return;
       }
       if (online.state.gameId && online.state.endedReason === null) {
@@ -128,11 +142,15 @@ export default function App() {
   ]);
 
   useEffect(() => {
+    if (online.state.yourNewRating != null) {
+      auth.applyRating(online.state.yourNewRating);
+      return;
+    }
     if (online.state.endedReason && playMode === "online") {
       void auth.refreshUser().catch(() => undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [online.state.endedReason, playMode]);
+  }, [online.state.yourNewRating, online.state.endedReason, playMode]);
 
   const leaveToLobby = () => {
     if (online.state.matchmaking === "queued") {
@@ -142,10 +160,23 @@ export default function App() {
     local.returnToLobby();
     setPlayMode("none");
     setExitConfirm(false);
+    setLeaveQueueConfirm(false);
+    setScreen("lobby");
+  };
+
+  const leaveQueue = () => {
+    online.cancelMatchmaking();
+    online.returnToLobby();
+    setPlayMode("none");
+    setLeaveQueueConfirm(false);
     setScreen("lobby");
   };
 
   const goLobby = () => {
+    if (queued) {
+      setLeaveQueueConfirm(true);
+      return;
+    }
     if (inActiveMatch) {
       setExitConfirm(true);
       return;
@@ -154,6 +185,10 @@ export default function App() {
   };
 
   const goHome = () => {
+    if (queued) {
+      setLeaveQueueConfirm(true);
+      return;
+    }
     if (inActiveMatch) {
       setExitConfirm(true);
       return;
@@ -182,7 +217,7 @@ export default function App() {
   const startRankedWithMode = (mode: GameMode) => {
     setPlayMode("online");
     online.findMatch(mode);
-    setScreen("matchmaking");
+    setScreen("lobby");
   };
 
   const goPlay = () => {
@@ -199,12 +234,9 @@ export default function App() {
       else setScreen("game");
       return;
     }
-    if (
-      online.state.matchmaking === "queued" ||
-      online.state.matchmaking === "found"
-    ) {
+    if (queued) {
       setPlayMode("online");
-      setScreen("matchmaking");
+      setScreen("lobby");
       return;
     }
     openRankedModes();
@@ -242,12 +274,12 @@ export default function App() {
     <>
       <TopBar
         user={auth.user}
-        active={topBarActive(screen)}
+        active={topBarActive(screen, queued)}
         onHome={goHome}
         onLobby={goLobby}
         onPlay={goPlay}
         onLeaderboard={() => {
-          if (inActiveMatch) return;
+          if (queued || inActiveMatch) return;
           setScreen("leaderboard");
         }}
         onLogout={
@@ -323,24 +355,6 @@ export default function App() {
             onSelect={local.selectMode}
             onBack={leaveToLobby}
             onHome={goHome}
-          />
-        ) : null}
-
-        {auth.user && screen === "matchmaking" ? (
-          <Matchmaking
-            user={auth.user}
-            status={online.state.matchmaking}
-            mode={online.state.matchmakingMode}
-            opponentUsername={online.state.opponentUsername}
-            opponentRating={online.state.opponentRating}
-            error={online.state.error}
-            onCancel={() => {
-              online.cancelMatchmaking();
-              setPlayMode("none");
-              setScreen("lobby");
-            }}
-            onHome={goLobby}
-            onPlayLocal={openLocalModes}
           />
         ) : null}
 
@@ -421,7 +435,7 @@ export default function App() {
         {auth.user &&
         screen === "game" &&
         playMode === "online" &&
-        online.state.phase === "playing" ? (
+        (online.state.phase === "playing" || online.state.endedReason) ? (
           <GameBoard
             state={online.state}
             mode="ranked"
@@ -431,13 +445,24 @@ export default function App() {
             tactics={onlineTactics}
             onSubmitPick={online.submitPick}
             onHome={goHome}
-            onBackToLobby={() => {
-              leaveToLobby();
-              void auth.refreshUser();
-            }}
+            onBackToLobby={leaveToLobby}
           />
         ) : null}
       </main>
+
+      {auth.user && queueOverlay ? (
+        <Matchmaking
+          user={auth.user}
+          status={online.state.matchmaking}
+          mode={online.state.matchmakingMode}
+          opponentUsername={online.state.opponentUsername}
+          opponentRating={online.state.opponentRating}
+          error={online.state.error}
+          onCancel={leaveQueue}
+          onHome={queued ? goHome : leaveQueue}
+          onPlayLocal={openLocalModes}
+        />
+      ) : null}
 
       <footer className="shell app-footer">
         <div className="divider" />
@@ -446,6 +471,17 @@ export default function App() {
           <span>Ranked modes · Local practice</span>
         </div>
       </footer>
+
+      {leaveQueueConfirm ? (
+        <ConfirmDialog
+          title="Leave queue?"
+          message="Stop searching for a match and return home?"
+          confirmLabel="Leave queue"
+          cancelLabel="Keep searching"
+          onConfirm={leaveQueue}
+          onCancel={() => setLeaveQueueConfirm(false)}
+        />
+      ) : null}
 
       {exitConfirm ? (
         <ConfirmDialog

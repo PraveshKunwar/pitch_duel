@@ -61,7 +61,10 @@ export interface RoundCoordinatorDependencies {
   now?: () => number;
   random?: () => number;
   roundMs?: number;
-  onGameFinished?: (session: GameSession) => Promise<unknown>;
+  onGameFinished?: (session: GameSession) => Promise<{
+    ratings?: { player1: number; player2: number };
+    ratingDelta?: number | null;
+  } | void>;
   onError?: (
     error: unknown,
     context: { gameId: string; during: string },
@@ -113,12 +116,32 @@ export function createRoundCoordinator(
   }
 
   async function finish(session: GameSession): Promise<void> {
-    if (!deps.onGameFinished) return;
-    try {
-      await deps.onGameFinished(session);
-    } catch (error) {
-      reportError(error, { gameId: session.id, during: "match persistence" });
+    const winner =
+      session.state.player1.score > session.state.player2.score
+        ? ("player1" as const)
+        : session.state.player2.score > session.state.player1.score
+          ? ("player2" as const)
+          : null;
+    let ratings: { player1: number; player2: number } | undefined;
+    let ratingDelta: number | null | undefined;
+    if (deps.onGameFinished) {
+      try {
+        const recorded = await deps.onGameFinished(session);
+        if (recorded?.ratings) ratings = recorded.ratings;
+        if (recorded && "ratingDelta" in recorded) {
+          ratingDelta = recorded.ratingDelta ?? null;
+        }
+      } catch (error) {
+        reportError(error, { gameId: session.id, during: "match persistence" });
+      }
     }
+    // Always notify clients — end UI must not depend on Postgres succeeding.
+    await fanout.gameEnded(session, {
+      reason: "completed",
+      winner,
+      ratings,
+      ratingDelta,
+    });
   }
 
   async function commitResolved(

@@ -255,6 +255,33 @@ describe("day 9 acceptance", () => {
     await server.stop();
   });
 
+  it("never matches classic against tactical (mode-isolated queues)", async () => {
+    const server = await boot({ tickMs: 60_000 });
+    const [a, b] = [await user(1000), await user(1000)];
+    const [c1, c2] = [await connect(server, a), await connect(server, b)];
+
+    c1.send({ type: "matchmaking:join", mode: "classic" });
+    await c1.next("matchmaking:queued");
+    c2.send({ type: "matchmaking:join", mode: "tactical" });
+    await c2.next("matchmaking:queued");
+
+    await server.matchmaking.tick();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    expect(await server.matchmaking.queues.list("classic")).toHaveLength(1);
+    expect(await server.matchmaking.queues.list("tactical")).toHaveLength(1);
+    expect(
+      c1.received.some((message) => message.type === "matchmaking:found"),
+    ).toBe(false);
+    expect(
+      c2.received.some((message) => message.type === "matchmaking:found"),
+    ).toBe(false);
+
+    c1.close();
+    c2.close();
+    await server.stop();
+  });
+
   it("rejects duplicate queue requests and active-game joins", async () => {
     const server = await boot();
     const [a, b] = [await user(1000), await user(1000)];

@@ -30,6 +30,8 @@ export interface GameFanout {
     payload: {
       reason: "completed" | "forfeit" | "abandoned";
       winner: PlayerSeat | null;
+      ratings?: { player1: number; player2: number };
+      ratingDelta?: number | null;
     },
   ): Promise<void>;
   notifyUser(userId: string, message: ServerMessage): Promise<void>;
@@ -137,6 +139,10 @@ export function createLocalGameFanout(
         type: "game:ended",
         reason: payload.reason,
         winner: payload.winner,
+        ...(payload.ratings ? { ratings: payload.ratings } : {}),
+        ...(payload.ratingDelta !== undefined
+          ? { ratingDelta: payload.ratingDelta }
+          : {}),
       });
     },
 
@@ -210,6 +216,8 @@ export function createRedisGameFanout(
         gameId: session.id,
         reason: payload.reason,
         winner: payload.winner,
+        ratings: payload.ratings,
+        ratingDelta: payload.ratingDelta,
         originInstanceId: instanceId,
       };
       await publisher.publishGame(event);

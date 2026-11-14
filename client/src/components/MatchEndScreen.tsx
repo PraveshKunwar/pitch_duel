@@ -42,11 +42,11 @@ export function MatchEndScreen({
       ? "Match abandoned."
       : outcome === "win"
         ? reason === "forfeit"
-          ? "You win by forfeit."
-          : "Victory is yours."
+          ? "You won by forfeit."
+          : "You won."
         : reason === "forfeit"
           ? "You forfeited."
-          : "Defeat this time.";
+          : "You lost.";
 
   const subtitle =
     outcome === "abandoned"
