@@ -6,7 +6,7 @@ Requires Node 22+ and Docker.
 
 [![Pitch Duel demo](./demo-poster.png)](https://github.com/PraveshKunwar/pitch_duel/releases/download/demo/demo.mp4)
 
-[Watch the demo](https://github.com/PraveshKunwar/pitch_duel/releases/download/demo/demo.mp4)
+<video src="demo.mp4" width="320" height="240" controls></video>
 
 ## Run locally
 
