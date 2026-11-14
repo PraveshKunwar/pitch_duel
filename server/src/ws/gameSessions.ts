@@ -1,8 +1,21 @@
 import { randomUUID } from "node:crypto";
-import { createGame } from "../game/createGame";
-import type { Card, GameState, PlayerState, StatCategory } from "../game/types";
+import { createDraftWithPool } from "../game/draft";
+import {
+  createGame,
+  createPendingGame,
+} from "../game/createGame";
+import type { GameMode, Tactic } from "../game/modes";
+import type {
+  Card,
+  DraftState,
+  GameState,
+  PlayerState,
+  StatCategory,
+} from "../game/types";
 
 export type PlayerSeat = "player1" | "player2";
+
+export type SessionPhase = "drafting" | "choosing_tactic" | "playing";
 
 export interface PlayerConnectionState {
   connected: boolean;
@@ -19,7 +32,12 @@ export type SessionOutcome =
 export interface GameSession {
   id: string;
   version: number;
+  mode: GameMode;
+  phase: SessionPhase;
   state: GameState;
+  draft: { draft: DraftState; pool: Card[] } | null;
+  pendingTactics: { player1: Tactic | null; player2: Tactic | null } | null;
+  pendingDecks: { player1Deck: Card[]; player2Deck: Card[] } | null;
   player1UserId: string;
   player2UserId: string;
   /** Display metadata stamped at match create (survive refresh without extra HTTP). */
@@ -74,6 +92,7 @@ export interface CreateSessionInput {
   player2Username?: string;
   player1Rating?: number | null;
   player2Rating?: number | null;
+  mode?: GameMode;
 }
 
 export type SessionCreatedListener = (
@@ -91,14 +110,49 @@ export interface GameSessionStore {
 }
 
 export function buildSession(input: CreateSessionInput): GameSession {
+  const mode = input.mode ?? "classic";
+  const firstCategory = input.firstCategory ?? "attack";
+
+  let phase: SessionPhase = "playing";
+  let state: GameState;
+  let draft: GameSession["draft"] = null;
+  let pendingTactics: GameSession["pendingTactics"] = null;
+  let pendingDecks: GameSession["pendingDecks"] = null;
+
+  if (mode === "draft") {
+    phase = "drafting";
+    state = createPendingGame("draft", firstCategory);
+    const built = createDraftWithPool(
+      [...input.player1Deck, ...input.player2Deck],
+      5,
+    );
+    draft = built;
+  } else if (mode === "tactical") {
+    phase = "choosing_tactic";
+    state = createPendingGame("tactical", firstCategory);
+    pendingTactics = { player1: null, player2: null };
+    pendingDecks = {
+      player1Deck: input.player1Deck,
+      player2Deck: input.player2Deck,
+    };
+  } else {
+    state = createGame(
+      input.player1Deck,
+      input.player2Deck,
+      firstCategory,
+      mode,
+    );
+  }
+
   return {
     id: randomUUID(),
     version: 1,
-    state: createGame(
-      input.player1Deck,
-      input.player2Deck,
-      input.firstCategory ?? "attack",
-    ),
+    mode,
+    phase,
+    state,
+    draft,
+    pendingTactics,
+    pendingDecks,
     player1UserId: input.player1UserId,
     player2UserId: input.player2UserId,
     player1Username: input.player1Username ?? "Player1",
@@ -206,4 +260,28 @@ const categories: StatCategory[] = ["attack", "defending", "passing"];
 export function nextCategory(current: StatCategory): StatCategory {
   const index = categories.indexOf(current);
   return categories[(index + 1) % categories.length];
+}
+
+export function draftViewForSeat(
+  session: GameSession,
+  seat: PlayerSeat,
+): {
+  draft: DraftState;
+  yourPicks: Card[];
+  opponentPickCount: number;
+} | null {
+  if (!session.draft) return null;
+  const { draft } = session.draft;
+  const yours = seat === "player1" ? draft.player1Picks : draft.player2Picks;
+  const theirs = seat === "player1" ? draft.player2Picks : draft.player1Picks;
+  return {
+    draft: {
+      ...draft,
+      // Hide opponent card details in the mirrored picks arrays.
+      player1Picks: seat === "player1" ? draft.player1Picks : [],
+      player2Picks: seat === "player2" ? draft.player2Picks : [],
+    },
+    yourPicks: yours.map((c) => ({ ...c })),
+    opponentPickCount: theirs.length,
+  };
 }

@@ -102,6 +102,13 @@ export function buildStateSnapshot(
   seat: PlayerSeat,
 ): Extract<ServerMessage, { type: "game:state" }> {
   const other = seat === "player1" ? "player2" : "player1";
+  const tactics =
+    session.state.tactics != null
+      ? {
+          you: session.state.tactics[seat],
+          opponent: session.state.tactics[other],
+        }
+      : null;
   return {
     type: "game:state",
     state: visiblePlayerState(session.state, seat),
@@ -110,6 +117,10 @@ export function buildStateSnapshot(
       round: session.state.round,
       category: session.state.category,
       status: matchViewStatus(session),
+      mode: session.mode ?? session.state.mode ?? "classic",
+      phase: session.phase ?? "playing",
+      suddenDeath: session.state.suddenDeath ?? false,
+      regulationRounds: session.state.regulationRounds ?? 5,
       history: session.state.history.map((round) => ({
         ...round,
         card1: { ...round.card1 },
@@ -122,6 +133,7 @@ export function buildStateSnapshot(
       yourSeat: seat,
       you: playerView(session, seat),
       opponent: playerView(session, other),
+      tactics,
     },
   };
 }

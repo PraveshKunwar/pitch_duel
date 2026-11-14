@@ -1,6 +1,16 @@
 import type Redis from "ioredis";
-import type { MatchmakingConfig, QueuedPlayer } from "./types";
-import { DEFAULT_MATCHMAKING_CONFIG } from "./types";
+import type { GameMode } from "../game/modes";
+import { GAME_MODES, isGameMode } from "../game/modes";
+import type {
+  MatchmakingConfig,
+  QueuedPlayer,
+  SingleQueueConfig,
+} from "./types";
+import {
+  DEFAULT_MATCHMAKING_CONFIG,
+  LEGACY_SINGLE_QUEUE_CONFIG,
+  queueKeysForMode,
+} from "./types";
 
 const ADD_IF_ABSENT = `
 if redis.call('ZSCORE', KEYS[1], ARGV[1]) then
@@ -62,8 +72,8 @@ export interface RankedQueue {
   add(userId: string, rating: number, joinedAtMs: number): Promise<boolean>;
   remove(userId: string): Promise<boolean>;
   isQueued(userId: string): Promise<boolean>;
-  get(userId: string): Promise<QueuedPlayer | null>;
-  list(): Promise<QueuedPlayer[]>;
+  get(userId: string): Promise<Omit<QueuedPlayer, "mode"> | null>;
+  list(): Promise<Array<Omit<QueuedPlayer, "mode">>>;
   claimClosest(
     seekerId: string,
     maxDelta: number,
@@ -77,7 +87,7 @@ export interface RankedQueue {
 
 export function createRankedQueue(
   client: Redis,
-  config: MatchmakingConfig = DEFAULT_MATCHMAKING_CONFIG,
+  config: SingleQueueConfig = LEGACY_SINGLE_QUEUE_CONFIG,
 ): RankedQueue {
   const { queueKey, joinedKey } = config;
 
@@ -127,7 +137,7 @@ export function createRankedQueue(
         client.zrange(queueKey, 0, -1, "WITHSCORES"),
         client.hgetall(joinedKey),
       ]);
-      const players: QueuedPlayer[] = [];
+      const players: Array<Omit<QueuedPlayer, "mode">> = [];
       for (let i = 0; i < members.length; i += 2) {
         const userId = members[i];
         players.push({
@@ -155,6 +165,113 @@ export function createRankedQueue(
         seekerRating: Number(result[2]),
         opponentRating: Number(result[3]),
       };
+    },
+  };
+}
+
+export interface ModeQueues {
+  add(
+    mode: GameMode,
+    userId: string,
+    rating: number,
+    joinedAtMs: number,
+  ): Promise<boolean>;
+  remove(userId: string): Promise<boolean>;
+  isQueued(userId: string): Promise<boolean>;
+  getMode(userId: string): Promise<GameMode | null>;
+  get(userId: string): Promise<QueuedPlayer | null>;
+  list(mode: GameMode): Promise<QueuedPlayer[]>;
+  listAll(): Promise<QueuedPlayer[]>;
+  forMode(mode: GameMode): RankedQueue;
+}
+
+export function createModeQueues(
+  client: Redis,
+  config: MatchmakingConfig = DEFAULT_MATCHMAKING_CONFIG,
+): ModeQueues {
+  const queues = new Map<GameMode, RankedQueue>();
+  for (const mode of GAME_MODES) {
+    const keys = queueKeysForMode(mode, config);
+    queues.set(
+      mode,
+      createRankedQueue(client, {
+        ...LEGACY_SINGLE_QUEUE_CONFIG,
+        queueKey: keys.queueKey,
+        joinedKey: keys.joinedKey,
+        toleranceBands: config.toleranceBands,
+        maxWaitMs: config.maxWaitMs,
+        tickMs: config.tickMs,
+      }),
+    );
+  }
+
+  const membershipKey = config.membershipKey;
+
+  return {
+    forMode(mode) {
+      const queue = queues.get(mode);
+      if (!queue) throw new Error(`Unknown mode ${mode}`);
+      return queue;
+    },
+
+    async getMode(userId) {
+      const raw = await client.hget(membershipKey, userId);
+      return isGameMode(raw) ? raw : null;
+    },
+
+    async add(mode, userId, rating, joinedAtMs) {
+      const existing = await client.hget(membershipKey, userId);
+      if (existing) return false;
+      const queue = queues.get(mode);
+      if (!queue) throw new Error(`Unknown mode ${mode}`);
+      const added = await queue.add(userId, rating, joinedAtMs);
+      if (!added) return false;
+      await client.hset(membershipKey, userId, mode);
+      return true;
+    },
+
+    async remove(userId) {
+      const mode = await this.getMode(userId);
+      if (!mode) {
+        // Best-effort: scrub every mode queue.
+        let removed = false;
+        for (const queue of queues.values()) {
+          if (await queue.remove(userId)) removed = true;
+        }
+        await client.hdel(membershipKey, userId);
+        return removed;
+      }
+      const removed = await queues.get(mode)!.remove(userId);
+      await client.hdel(membershipKey, userId);
+      return removed;
+    },
+
+    async isQueued(userId) {
+      return (await this.getMode(userId)) !== null;
+    },
+
+    async get(userId) {
+      const mode = await this.getMode(userId);
+      if (!mode) return null;
+      const row = await queues.get(mode)!.get(userId);
+      if (!row) {
+        await client.hdel(membershipKey, userId);
+        return null;
+      }
+      return { ...row, mode };
+    },
+
+    async list(mode) {
+      const rows = await queues.get(mode)!.list();
+      return rows.map((row) => ({ ...row, mode }));
+    },
+
+    async listAll() {
+      const all: QueuedPlayer[] = [];
+      for (const mode of GAME_MODES) {
+        all.push(...(await this.list(mode)));
+      }
+      return all;
     },
   };
 }

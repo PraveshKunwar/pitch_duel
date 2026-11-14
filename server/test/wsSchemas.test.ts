@@ -22,8 +22,14 @@ describe("client message schemas", () => {
 
   it("accepts matchmaking join and cancel", () => {
     expect(
-      safeParseClientMessage({ type: "matchmaking:join" }).success,
+      safeParseClientMessage({
+        type: "matchmaking:join",
+        mode: "classic",
+      }).success,
     ).toBe(true);
+    expect(
+      safeParseClientMessage({ type: "matchmaking:join" }).success,
+    ).toBe(false);
     expect(
       safeParseClientMessage({ type: "matchmaking:cancel" }).success,
     ).toBe(true);

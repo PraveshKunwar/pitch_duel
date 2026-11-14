@@ -97,11 +97,15 @@ async function connect(server: Server, who: TestUser): Promise<TestClient> {
 afterEach(async () => {
   for (const app of [...running]) await app.close();
   running.clear();
-  const leftover = await redis.client.zrange("queue:ranked", 0, -1);
-  if (leftover.length > 0) {
-    await redis.client.zrem("queue:ranked", ...leftover);
-    await redis.client.hdel("queue:ranked:joined", ...leftover);
+  for (const mode of ["classic", "draft", "sudden_death", "tactical"]) {
+    const key = `queue:ranked:${mode}`;
+    const leftover = await redis.client.zrange(key, 0, -1);
+    if (leftover.length > 0) {
+      await redis.client.zrem(key, ...leftover);
+      await redis.client.hdel(`${key}:joined`, ...leftover);
+    }
   }
+  await redis.client.del("queue:ranked:membership");
 });
 
 afterAll(async () => {
@@ -115,10 +119,10 @@ describe("day 9 acceptance", () => {
     const [a, b] = [await user(1000), await user(1040)];
     const [c1, c2] = [await connect(server, a), await connect(server, b)];
 
-    c1.send({ type: "matchmaking:join" });
+    c1.send({ type: "matchmaking:join", mode: "classic" });
     await c1.next("matchmaking:queued");
 
-    c2.send({ type: "matchmaking:join" });
+    c2.send({ type: "matchmaking:join", mode: "classic" });
     const [found1, found2] = await Promise.all([
       c1.next("matchmaking:found"),
       c2.next("matchmaking:found"),
@@ -156,9 +160,9 @@ describe("day 9 acceptance", () => {
     const [a, b] = [await user(1000), await user(1180)];
     const [c1, c2] = [await connect(server, a), await connect(server, b)];
 
-    c1.send({ type: "matchmaking:join" });
+    c1.send({ type: "matchmaking:join", mode: "classic" });
     await c1.next("matchmaking:queued");
-    c2.send({ type: "matchmaking:join" });
+    c2.send({ type: "matchmaking:join", mode: "classic" });
     await c2.next("matchmaking:queued");
 
     expect(await server.matchmaking.queue.list()).toHaveLength(2);
@@ -189,13 +193,13 @@ describe("day 9 acceptance", () => {
       await connect(server, close),
     ];
 
-    cFar.send({ type: "matchmaking:join" });
+    cFar.send({ type: "matchmaking:join", mode: "classic" });
     await cFar.next("matchmaking:queued");
-    cClose.send({ type: "matchmaking:join" });
+    cClose.send({ type: "matchmaking:join", mode: "classic" });
     await cClose.next("matchmaking:queued");
     expect(await server.matchmaking.queue.list()).toHaveLength(2);
 
-    cSeeker.send({ type: "matchmaking:join" });
+    cSeeker.send({ type: "matchmaking:join", mode: "classic" });
 
     const [foundSeeker, foundClose] = await Promise.all([
       cSeeker.next("matchmaking:found"),
@@ -223,7 +227,7 @@ describe("day 9 acceptance", () => {
     const solo = await user(1000);
     const client = await connect(server, solo);
 
-    client.send({ type: "matchmaking:join" });
+    client.send({ type: "matchmaking:join", mode: "classic" });
     await client.next("matchmaking:queued");
     expect(await server.matchmaking.queue.isQueued(solo.id)).toBe(true);
 
@@ -241,7 +245,7 @@ describe("day 9 acceptance", () => {
     const solo = await user(1000);
     const client = await connect(server, solo);
 
-    client.send({ type: "matchmaking:join" });
+    client.send({ type: "matchmaking:join", mode: "classic" });
     await client.next("matchmaking:queued");
     client.send({ type: "matchmaking:cancel" });
     await client.next("matchmaking:cancelled");
@@ -256,18 +260,18 @@ describe("day 9 acceptance", () => {
     const [a, b] = [await user(1000), await user(1000)];
     const [c1, c2] = [await connect(server, a), await connect(server, b)];
 
-    c1.send({ type: "matchmaking:join" });
+    c1.send({ type: "matchmaking:join", mode: "classic" });
     await c1.next("matchmaking:queued");
-    c1.send({ type: "matchmaking:join" });
+    c1.send({ type: "matchmaking:join", mode: "classic" });
     await expect(c1.next("error")).resolves.toMatchObject({
       message: "Already in matchmaking queue",
     });
 
-    c2.send({ type: "matchmaking:join" });
+    c2.send({ type: "matchmaking:join", mode: "classic" });
     const found = await c1.next("matchmaking:found");
     await c2.next("matchmaking:found");
 
-    c1.send({ type: "matchmaking:join" });
+    c1.send({ type: "matchmaking:join", mode: "classic" });
     await expect(c1.next("error")).resolves.toMatchObject({
       message: "Already in an active game",
     });
@@ -283,7 +287,7 @@ describe("day 9 acceptance", () => {
     const solo = await user(1000);
     const client = await connect(server, solo);
 
-    client.send({ type: "matchmaking:join" });
+    client.send({ type: "matchmaking:join", mode: "classic" });
     await client.next("matchmaking:queued");
     client.close();
 

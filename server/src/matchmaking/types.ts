@@ -1,19 +1,23 @@
+import type { GameMode } from "../game/modes";
+
 export interface RatingToleranceBand {
   afterMs: number;
   maxDelta: number;
 }
 
 export interface MatchmakingConfig {
-  queueKey: string;
-  joinedKey: string;
+  queueKeyPrefix: string;
+  joinedKeySuffix: string;
+  membershipKey: string;
   maxWaitMs: number;
   tickMs: number;
   toleranceBands: RatingToleranceBand[];
 }
 
 export const DEFAULT_MATCHMAKING_CONFIG: MatchmakingConfig = {
-  queueKey: "queue:ranked",
-  joinedKey: "queue:ranked:joined",
+  queueKeyPrefix: "queue:ranked",
+  joinedKeySuffix: "joined",
+  membershipKey: "queue:ranked:membership",
   maxWaitMs: 60_000,
   tickMs: 1_000,
   toleranceBands: [
@@ -24,10 +28,38 @@ export const DEFAULT_MATCHMAKING_CONFIG: MatchmakingConfig = {
   ],
 };
 
+/** Legacy single-queue shape used by createRankedQueue directly in tests. */
+export interface SingleQueueConfig {
+  queueKey: string;
+  joinedKey: string;
+  maxWaitMs: number;
+  tickMs: number;
+  toleranceBands: RatingToleranceBand[];
+}
+
+export const LEGACY_SINGLE_QUEUE_CONFIG: SingleQueueConfig = {
+  queueKey: "queue:ranked:classic",
+  joinedKey: "queue:ranked:classic:joined",
+  maxWaitMs: 60_000,
+  tickMs: 1_000,
+  toleranceBands: DEFAULT_MATCHMAKING_CONFIG.toleranceBands,
+};
+
+export function queueKeysForMode(
+  mode: GameMode,
+  config: MatchmakingConfig = DEFAULT_MATCHMAKING_CONFIG,
+): { queueKey: string; joinedKey: string } {
+  return {
+    queueKey: `${config.queueKeyPrefix}:${mode}`,
+    joinedKey: `${config.queueKeyPrefix}:${mode}:${config.joinedKeySuffix}`,
+  };
+}
+
 export interface QueuedPlayer {
   userId: string;
   rating: number;
   joinedAtMs: number;
+  mode: GameMode;
 }
 
 export interface MatchedPair {
@@ -35,6 +67,7 @@ export interface MatchedPair {
   player2UserId: string;
   player1Rating: number;
   player2Rating: number;
+  mode: GameMode;
 }
 
 export function allowedRatingDelta(

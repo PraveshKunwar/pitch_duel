@@ -13,20 +13,15 @@ import { TopBar } from "./components/TopBar";
 import { useAuth } from "./hooks/useAuth";
 import { useGameSocket } from "./hooks/useGameSocket";
 import { useLocalGame } from "./hooks/useLocalGame";
-import type { AppScreen } from "./types/game";
+import type { AppScreen, GameMode } from "./types/game";
 
 function topBarActive(
   screen: AppScreen,
 ): "lobby" | "game" | "leaderboard" | "auth" | "matchmaking" {
   if (screen === "auth") return "auth";
   if (screen === "leaderboard") return "leaderboard";
-  if (screen === "matchmaking") return "matchmaking";
-  if (
-    screen === "game" ||
-    screen === "mode_select" ||
-    screen === "draft" ||
-    screen === "tactics"
-  ) {
+  if (screen === "matchmaking" || screen === "mode_select") return "matchmaking";
+  if (screen === "game" || screen === "draft" || screen === "tactics") {
     return "game";
   }
   return "lobby";
@@ -37,6 +32,9 @@ export default function App() {
   const [screen, setScreen] = useState<AppScreen>("auth");
   const [authTab, setAuthTab] = useState<"login" | "register">("login");
   const [playMode, setPlayMode] = useState<"none" | "online" | "local">("none");
+  const [modeSelectContext, setModeSelectContext] = useState<
+    "local" | "ranked"
+  >("local");
   const [exitConfirm, setExitConfirm] = useState(false);
   const online = useGameSocket(Boolean(auth.user));
   const local = useLocalGame(auth.user);
@@ -55,7 +53,15 @@ export default function App() {
     (local.phase === "selecting_mode" ||
       local.phase === "drafting" ||
       local.phase === "choosing_tactic");
-  const inActiveMatch = inOnlineMatch || inLocalMatch || inLocalSetup;
+  const inRankedSetup =
+    playMode === "online" &&
+    (screen === "mode_select" ||
+      online.state.matchmaking === "queued" ||
+      online.state.matchmaking === "found" ||
+      online.state.phase === "drafting" ||
+      online.state.phase === "choosing_tactic");
+  const inActiveMatch =
+    inOnlineMatch || inLocalMatch || inLocalSetup || inRankedSetup;
   const viewingMatch =
     (playMode === "online" && Boolean(online.state.gameId)) ||
     (playMode === "local" && local.active);
@@ -84,6 +90,14 @@ export default function App() {
         return;
       }
       if (online.state.gameId && online.state.endedReason === null) {
+        if (online.state.phase === "drafting") {
+          setScreen("draft");
+          return;
+        }
+        if (online.state.phase === "choosing_tactic") {
+          setScreen("tactics");
+          return;
+        }
         setScreen("game");
         return;
       }
@@ -91,6 +105,7 @@ export default function App() {
         setScreen("game");
         return;
       }
+      if (screen === "mode_select") return;
       if (screen === "auth" || screen === "matchmaking") {
         setScreen("lobby");
         setPlayMode("none");
@@ -108,6 +123,7 @@ export default function App() {
     online.state.matchmaking,
     online.state.gameId,
     online.state.endedReason,
+    online.state.phase,
     screen,
   ]);
 
@@ -145,28 +161,41 @@ export default function App() {
     leaveToLobby();
   };
 
-  const startLocal = () => {
+  const openLocalModes = () => {
     if (online.state.matchmaking === "queued") {
       online.cancelMatchmaking();
     }
     online.returnToLobby();
+    setModeSelectContext("local");
     local.openModeSelect();
     setPlayMode("local");
     setScreen("mode_select");
   };
 
-  const startOnline = () => {
+  const openRankedModes = () => {
     local.returnToLobby();
+    setModeSelectContext("ranked");
     setPlayMode("online");
-    online.findMatch();
+    setScreen("mode_select");
+  };
+
+  const startRankedWithMode = (mode: GameMode) => {
+    setPlayMode("online");
+    online.findMatch(mode);
     setScreen("matchmaking");
   };
 
   const goPlay = () => {
     if (viewingMatch) {
-      if (local.phase === "selecting_mode") setScreen("mode_select");
-      else if (local.phase === "drafting") setScreen("draft");
-      else if (local.phase === "choosing_tactic") setScreen("tactics");
+      if (playMode === "local") {
+        if (local.phase === "selecting_mode") setScreen("mode_select");
+        else if (local.phase === "drafting") setScreen("draft");
+        else if (local.phase === "choosing_tactic") setScreen("tactics");
+        else setScreen("game");
+        return;
+      }
+      if (online.state.phase === "drafting") setScreen("draft");
+      else if (online.state.phase === "choosing_tactic") setScreen("tactics");
       else setScreen("game");
       return;
     }
@@ -178,7 +207,7 @@ export default function App() {
       setScreen("matchmaking");
       return;
     }
-    startOnline();
+    openRankedModes();
   };
 
   if (auth.loading) {
@@ -204,6 +233,10 @@ export default function App() {
     local.game?.tactics && local.yourTactic
       ? { you: local.yourTactic, opponent: local.game.tactics.player2 }
       : null;
+
+  const onlineMode =
+    online.state.match?.mode ?? online.state.matchmakingMode ?? "classic";
+  const onlineTactics = online.state.match?.tactics ?? null;
 
   return (
     <>
@@ -263,9 +296,33 @@ export default function App() {
             user={auth.user}
             connection={online.state.connection}
             error={online.state.error}
-            onFindMatch={startOnline}
-            onPlayLocal={startLocal}
+            onFindMatch={openRankedModes}
+            onPlayLocal={openLocalModes}
             onLeaderboard={() => setScreen("leaderboard")}
+          />
+        ) : null}
+
+        {auth.user &&
+        screen === "mode_select" &&
+        modeSelectContext === "ranked" &&
+        playMode === "online" ? (
+          <ModeSelect
+            context="ranked"
+            onSelect={startRankedWithMode}
+            onBack={leaveToLobby}
+            onHome={goHome}
+          />
+        ) : null}
+
+        {auth.user &&
+        screen === "mode_select" &&
+        modeSelectContext === "local" &&
+        playMode === "local" ? (
+          <ModeSelect
+            context="local"
+            onSelect={local.selectMode}
+            onBack={leaveToLobby}
+            onHome={goHome}
           />
         ) : null}
 
@@ -273,6 +330,7 @@ export default function App() {
           <Matchmaking
             user={auth.user}
             status={online.state.matchmaking}
+            mode={online.state.matchmakingMode}
             opponentUsername={online.state.opponentUsername}
             opponentRating={online.state.opponentRating}
             error={online.state.error}
@@ -282,7 +340,7 @@ export default function App() {
               setScreen("lobby");
             }}
             onHome={goLobby}
-            onPlayLocal={startLocal}
+            onPlayLocal={openLocalModes}
           />
         ) : null}
 
@@ -291,14 +349,6 @@ export default function App() {
             user={auth.user}
             onBack={() => setScreen("lobby")}
             onHome={goLobby}
-          />
-        ) : null}
-
-        {auth.user && screen === "mode_select" && playMode === "local" ? (
-          <ModeSelect
-            onSelect={local.selectMode}
-            onBack={leaveToLobby}
-            onHome={goHome}
           />
         ) : null}
 
@@ -314,13 +364,39 @@ export default function App() {
           />
         ) : null}
 
+        {auth.user &&
+        screen === "draft" &&
+        playMode === "online" &&
+        online.state.draft ? (
+          <DraftBoard
+            draft={online.state.draft}
+            yourSeat={online.state.match?.yourSeat ?? "player1"}
+            yourPicks={online.state.yourDraftPicks}
+            opponentPickCount={online.state.opponentDraftCount}
+            onPick={online.submitDraftPick}
+            onHome={goHome}
+            onBack={leaveToLobby}
+          />
+        ) : null}
+
         {auth.user && screen === "tactics" && playMode === "local" ? (
           <TacticSelect
             onConfirm={local.submitTactic}
             onBack={() => {
               local.openModeSelect();
+              setModeSelectContext("local");
               setScreen("mode_select");
             }}
+            onHome={goHome}
+          />
+        ) : null}
+
+        {auth.user && screen === "tactics" && playMode === "online" ? (
+          <TacticSelect
+            locked={online.state.yourTactic}
+            opponentReady={online.state.opponentTacticReady}
+            onConfirm={online.submitTactic}
+            onBack={leaveToLobby}
             onHome={goHome}
           />
         ) : null}
@@ -342,10 +418,17 @@ export default function App() {
           />
         ) : null}
 
-        {auth.user && screen === "game" && playMode === "online" ? (
+        {auth.user &&
+        screen === "game" &&
+        playMode === "online" &&
+        online.state.phase === "playing" ? (
           <GameBoard
             state={online.state}
             mode="ranked"
+            gameMode={onlineMode}
+            regulationRounds={online.state.match?.regulationRounds ?? 5}
+            suddenDeath={online.state.match?.suddenDeath ?? false}
+            tactics={onlineTactics}
             onSubmitPick={online.submitPick}
             onHome={goHome}
             onBackToLobby={() => {
@@ -360,7 +443,7 @@ export default function App() {
         <div className="divider" />
         <div className="footer-note">
           <span>SOCCER CARD BATTLE</span>
-          <span>Ranked 1v1 · Local modes</span>
+          <span>Ranked modes · Local practice</span>
         </div>
       </footer>
 

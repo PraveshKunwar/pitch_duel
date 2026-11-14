@@ -2,20 +2,26 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../services/api";
 import { GameSocket } from "../services/websocket";
 import type {
+  Card,
   CompletedRound,
   ConnectionUiState,
+  DraftState,
+  GameMode,
   MatchView,
   MatchmakingUiStatus,
   PlayerSeat,
   PlayerState,
   ServerMessage,
+  SessionPhase,
   StatCategory,
+  Tactic,
 } from "../types/game";
 
 export type GameClientState = {
   connection: ConnectionUiState;
   matchmaking: MatchmakingUiStatus;
   matchmakingRating: number | null;
+  matchmakingMode: GameMode | null;
   error: string | null;
   gameId: string | null;
   privateState: PlayerState | null;
@@ -30,12 +36,19 @@ export type GameClientState = {
   endedWinner: PlayerSeat | null;
   opponentUsername: string | null;
   opponentRating: number | null;
+  phase: SessionPhase;
+  draft: DraftState | null;
+  yourDraftPicks: Card[];
+  opponentDraftCount: number;
+  yourTactic: Tactic | null;
+  opponentTacticReady: boolean;
 };
 
 const initialState: GameClientState = {
   connection: "idle",
   matchmaking: "idle",
   matchmakingRating: null,
+  matchmakingMode: null,
   error: null,
   gameId: null,
   privateState: null,
@@ -50,6 +63,12 @@ const initialState: GameClientState = {
   endedWinner: null,
   opponentUsername: null,
   opponentRating: null,
+  phase: "playing",
+  draft: null,
+  yourDraftPicks: [],
+  opponentDraftCount: 0,
+  yourTactic: null,
+  opponentTacticReady: false,
 };
 
 export function useGameSocket(enabled: boolean) {
@@ -65,6 +84,7 @@ export function useGameSocket(enabled: boolean) {
             ...prev,
             matchmaking: "queued",
             matchmakingRating: message.rating,
+            matchmakingMode: message.mode,
             error: null,
           };
         case "matchmaking:found":
@@ -72,12 +92,24 @@ export function useGameSocket(enabled: boolean) {
             ...prev,
             matchmaking: "found",
             gameId: message.gameId,
+            matchmakingMode: message.mode,
             opponentUsername: message.opponentUsername,
             opponentRating: message.opponentRating,
             endedReason: null,
             endedWinner: null,
             lastRoundResult: null,
             history: [],
+            draft: null,
+            yourDraftPicks: [],
+            opponentDraftCount: 0,
+            yourTactic: null,
+            opponentTacticReady: false,
+            phase:
+              message.mode === "draft"
+                ? "drafting"
+                : message.mode === "tactical"
+                  ? "choosing_tactic"
+                  : "playing",
             error: null,
           };
         case "matchmaking:timeout":
@@ -117,6 +149,8 @@ export function useGameSocket(enabled: boolean) {
             deadlineMs: match?.deadlineMs ?? prev.deadlineMs,
             history: match?.history ?? prev.history,
             pickPending: Boolean(message.state.selectedCardId),
+            phase: match?.phase ?? prev.phase,
+            matchmakingMode: match?.mode ?? prev.matchmakingMode,
             opponentUsername:
               match?.opponent.username ?? prev.opponentUsername,
             opponentRating: match?.opponent.rating ?? prev.opponentRating,
@@ -127,6 +161,27 @@ export function useGameSocket(enabled: boolean) {
                 : "connected",
           };
         }
+        case "game:draftState":
+          return {
+            ...prev,
+            gameId: message.gameId,
+            phase: "drafting",
+            draft: message.draft,
+            yourDraftPicks: message.yourPicks,
+            opponentDraftCount: message.opponentPickCount,
+            matchmaking: "idle",
+            connection: "connected",
+          };
+        case "game:tacticState":
+          return {
+            ...prev,
+            gameId: message.gameId,
+            phase: "choosing_tactic",
+            yourTactic: message.you,
+            opponentTacticReady: message.opponentReady,
+            matchmaking: "idle",
+            connection: "connected",
+          };
         case "game:roundStart":
           return {
             ...prev,
@@ -283,20 +338,66 @@ export function useGameSocket(enabled: boolean) {
     }
   }, [state.matchmaking, state.gameId]);
 
-  const findMatch = useCallback(() => {
+  const findMatch = useCallback((mode: GameMode) => {
     setState((prev) => ({
       ...prev,
       error: null,
       endedReason: null,
       endedWinner: null,
       lastRoundResult: null,
+      matchmakingMode: mode,
     }));
-    socketRef.current?.send({ type: "matchmaking:join" });
+    socketRef.current?.send({ type: "matchmaking:join", mode });
   }, []);
 
   const cancelMatchmaking = useCallback(() => {
     socketRef.current?.send({ type: "matchmaking:cancel" });
   }, []);
+
+  const submitDraftPick = useCallback(
+    (cardId: string) => {
+      if (!state.gameId || state.phase !== "drafting") return;
+      const sequence = sequenceRef.current;
+      sequenceRef.current += 1;
+      try {
+        socketRef.current?.send({
+          type: "game:draftPick",
+          gameId: state.gameId,
+          sequence,
+          cardId,
+        });
+      } catch (error) {
+        setState((prev) => ({
+          ...prev,
+          error: error instanceof Error ? error.message : "Draft pick failed",
+        }));
+      }
+    },
+    [state.gameId, state.phase],
+  );
+
+  const submitTactic = useCallback(
+    (tactic: Tactic) => {
+      if (!state.gameId || state.phase !== "choosing_tactic") return;
+      const sequence = sequenceRef.current;
+      sequenceRef.current += 1;
+      setState((prev) => ({ ...prev, yourTactic: tactic }));
+      try {
+        socketRef.current?.send({
+          type: "game:chooseTactic",
+          gameId: state.gameId,
+          sequence,
+          tactic,
+        });
+      } catch (error) {
+        setState((prev) => ({
+          ...prev,
+          error: error instanceof Error ? error.message : "Tactic lock failed",
+        }));
+      }
+    },
+    [state.gameId, state.phase],
+  );
 
   const submitPick = useCallback(
     (cardId: string) => {
@@ -349,6 +450,8 @@ export function useGameSocket(enabled: boolean) {
     findMatch,
     cancelMatchmaking,
     submitPick,
+    submitDraftPick,
+    submitTactic,
     returnToLobby,
   };
 }

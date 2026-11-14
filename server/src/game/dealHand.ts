@@ -8,10 +8,10 @@ function shuffle<T>(array: T[]): T[] {
   return array;
 }
 
-export function dealHand(deck: Card[]): Card[] {
-  if (deck.length < 5) {
-    throw new Error("Deck has less than 5 cards");
+export function dealHand(deck: Card[], handSize = 5): Card[] {
+  if (deck.length < handSize) {
+    throw new Error(`Deck has less than ${handSize} cards`);
   }
-  const shuffle_deck = shuffle([...deck]);
-  return shuffle_deck.slice(0, 5);
+  const shuffled = shuffle([...deck]);
+  return shuffled.slice(0, handSize);
 }

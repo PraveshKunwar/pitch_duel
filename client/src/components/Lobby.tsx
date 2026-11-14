@@ -74,7 +74,7 @@ export function Lobby({
           </div>
           <div className="divider" />
           <small>
-            Ranked is classic · Local unlocks Draft, Sudden Death, and Tactics
+            Pick a mode for ranked or local — queues never cross modes
           </small>
           {error ? (
             <div className="alert" role="alert">

@@ -160,6 +160,10 @@ export function createRoundCoordinator(
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
       const session = await deps.sessions.get(gameId);
       if (!session) return null;
+      if ((session.phase ?? "playing") !== "playing") {
+        disarm(gameId);
+        return { session, opened: false };
+      }
       if (isTerminal(session) || session.state.status !== "picking") {
         disarm(gameId);
         return { session, opened: false };
@@ -243,6 +247,9 @@ export function createRoundCoordinator(
 
       if (session.frozen) {
         return rejected("Game is paused while a player is disconnected");
+      }
+      if ((session.phase ?? "playing") !== "playing") {
+        return rejected("Match is still in setup");
       }
       if (isTerminal(session) || session.state.status !== "picking") {
         return rejected("Game is not accepting picks");

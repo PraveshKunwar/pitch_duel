@@ -68,6 +68,7 @@ function toClientState(
       connection: "idle",
       matchmaking: "idle",
       matchmakingRating: null,
+      matchmakingMode: null,
       error: null,
       gameId: null,
       privateState: null,
@@ -82,6 +83,12 @@ function toClientState(
       endedWinner: null,
       opponentUsername: "Computer",
       opponentRating: null,
+      phase: "playing",
+      draft: null,
+      yourDraftPicks: [],
+      opponentDraftCount: 0,
+      yourTactic: null,
+      opponentTacticReady: false,
     };
   }
 
@@ -92,6 +99,7 @@ function toClientState(
     connection: finished ? "match_completed" : "connected",
     matchmaking: "idle",
     matchmakingRating: null,
+    matchmakingMode: game.mode,
     error: null,
     gameId: `local-${game.mode}`,
     privateState: visiblePlayerState(game.player1),
@@ -100,6 +108,10 @@ function toClientState(
       round: game.round,
       category: game.category,
       status: finished ? "finished" : "picking",
+      mode: game.mode,
+      phase: "playing",
+      suddenDeath: game.suddenDeath,
+      regulationRounds: game.regulationRounds,
       history: game.history,
       deadlineMs: null,
       frozen: false,
@@ -118,6 +130,9 @@ function toClientState(
         rating: null,
         score: game.player2.score,
       },
+      tactics: game.tactics
+        ? { you: game.tactics.player1, opponent: game.tactics.player2 }
+        : null,
     },
     round: game.round,
     category: game.category,
@@ -129,6 +144,12 @@ function toClientState(
     endedWinner: winner,
     opponentUsername: "Computer",
     opponentRating: null,
+    phase: "playing",
+    draft: null,
+    yourDraftPicks: [],
+    opponentDraftCount: 0,
+    yourTactic: game.tactics?.player1 ?? null,
+    opponentTacticReady: Boolean(game.tactics),
   };
 }
 

@@ -22,11 +22,21 @@ export async function dealMatchDecks(): Promise<{
   player2Deck: Card[];
 }> {
   const all = await cards();
-  if (all.length < 5) {
+  if (all.length < 30) {
     throw new Error("Card catalog is too small to deal a match");
   }
+  const shuffled = shuffle(all);
   return {
-    player1Deck: shuffle(all).slice(0, Math.min(15, all.length)),
-    player2Deck: shuffle(all).slice(0, Math.min(15, all.length)),
+    player1Deck: shuffled.slice(0, 15),
+    player2Deck: shuffled.slice(15, 30),
   };
+}
+
+/** Unique shared pool for draft (5 packs × 3). */
+export async function dealDraftPool(): Promise<Card[]> {
+  const all = await cards();
+  if (all.length < 15) {
+    throw new Error("Card catalog is too small for draft");
+  }
+  return shuffle(all).slice(0, 15);
 }

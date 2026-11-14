@@ -89,7 +89,12 @@ describe("ranked matchmaking queue", () => {
     await queue.add("seeker", 1000, 0);
     await queue.add("mid", 1180, 1);
 
-    const tooSoon = await findAndClaimOpponent(queue, "seeker", 5_000);
+    const tooSoon = await findAndClaimOpponent(
+      queue,
+      "seeker",
+      5_000,
+      "classic",
+    );
     expect(tooSoon.matched).toBeNull();
     expect(await queue.isQueued("seeker")).toBe(true);
 
@@ -97,6 +102,7 @@ describe("ranked matchmaking queue", () => {
       queue,
       "seeker",
       15_000,
+      "classic",
       DEFAULT_MATCHMAKING_CONFIG,
     );
     expect(later.matched).toMatchObject({

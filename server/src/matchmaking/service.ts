@@ -1,5 +1,7 @@
 import type Redis from "ioredis";
 import type { Card } from "../game/types";
+import type { GameMode } from "../game/modes";
+import { GAME_MODES } from "../game/modes";
 import {
   createLocalGameFanout,
   type GameFanout,
@@ -8,7 +10,7 @@ import type { GameSessionStore } from "../ws/gameSessions";
 import type { AuthenticatedSocket, ServerMessage } from "../ws/types";
 import { dealMatchDecks } from "./decks";
 import { findAndClaimOpponent } from "./matcher";
-import { createRankedQueue, type RankedQueue } from "./queue";
+import { createModeQueues, type ModeQueues } from "./queue";
 import {
   DEFAULT_MATCHMAKING_CONFIG,
   type MatchmakingConfig,
@@ -30,11 +32,13 @@ export interface MatchmakingDependencies {
 }
 
 export interface MatchmakingService {
-  join(userId: string): Promise<void>;
+  join(userId: string, mode: GameMode): Promise<void>;
   cancel(userId: string): Promise<void>;
   onDisconnect(userId: string): Promise<void>;
   dispose(): void;
-  queue: RankedQueue;
+  queues: ModeQueues;
+  /** @deprecated use queues.forMode('classic') — kept for older tests */
+  queue: ModeQueues["forMode"] extends (m: GameMode) => infer R ? R : never;
   tick(): Promise<void>;
 }
 
@@ -47,7 +51,7 @@ export function createMatchmakingService(
     toleranceBands:
       deps.config?.toleranceBands ?? DEFAULT_MATCHMAKING_CONFIG.toleranceBands,
   };
-  const queue = createRankedQueue(deps.redis, config);
+  const queues = createModeQueues(deps.redis, config);
   const now = deps.now ?? Date.now;
   const dealDecks = deps.dealDecks ?? dealMatchDecks;
   const fanout =
@@ -89,6 +93,11 @@ export function createMatchmakingService(
       resolveUsername(pair.player1UserId),
       resolveUsername(pair.player2UserId),
     ]);
+    // Clear membership — claim already removed from ZSET, but membership may linger
+    // until remove(); claimClosest doesn't touch membership. Clear both seats.
+    await queues.remove(pair.player1UserId);
+    await queues.remove(pair.player2UserId);
+
     const session = await deps.sessions.create({
       player1UserId: pair.player1UserId,
       player2UserId: pair.player2UserId,
@@ -98,6 +107,7 @@ export function createMatchmakingService(
       player2Username,
       player1Rating: pair.player1Rating,
       player2Rating: pair.player2Rating,
+      mode: pair.mode,
     });
 
     notify(pair.player1UserId, {
@@ -105,19 +115,30 @@ export function createMatchmakingService(
       gameId: session.id,
       opponentRating: pair.player2Rating,
       opponentUsername: player2Username,
+      mode: pair.mode,
     });
     notify(pair.player2UserId, {
       type: "matchmaking:found",
       gameId: session.id,
       opponentRating: pair.player1Rating,
       opponentUsername: player1Username,
+      mode: pair.mode,
     });
 
     return session.id;
   };
 
-  const tryMatch = async (seekerId: string): Promise<boolean> => {
-    const attempt = await findAndClaimOpponent(queue, seekerId, now(), config);
+  const tryMatch = async (
+    seekerId: string,
+    mode: GameMode,
+  ): Promise<boolean> => {
+    const attempt = await findAndClaimOpponent(
+      queues.forMode(mode),
+      seekerId,
+      now(),
+      mode,
+      config,
+    );
     if (!attempt.matched) return false;
     try {
       await createMatchedGame(attempt.matched);
@@ -136,19 +157,21 @@ export function createMatchmakingService(
   };
 
   const tick = async (): Promise<void> => {
-    const players = await queue.list();
     const current = now();
 
-    for (const player of players) {
-      const waited = current - player.joinedAtMs;
-      if (waited >= config.maxWaitMs) {
-        const removed = await queue.remove(player.userId);
-        if (removed) {
-          notify(player.userId, { type: "matchmaking:timeout" });
+    for (const mode of GAME_MODES) {
+      const players = await queues.list(mode);
+      for (const player of players) {
+        const waited = current - player.joinedAtMs;
+        if (waited >= config.maxWaitMs) {
+          const removed = await queues.remove(player.userId);
+          if (removed) {
+            notify(player.userId, { type: "matchmaking:timeout" });
+          }
+          continue;
         }
-        continue;
+        await tryMatch(player.userId, mode);
       }
-      await tryMatch(player.userId);
     }
   };
 
@@ -160,11 +183,14 @@ export function createMatchmakingService(
   timer.unref?.();
 
   return {
-    queue,
+    queues,
+    get queue() {
+      return queues.forMode("classic");
+    },
 
     tick,
 
-    async join(userId) {
+    async join(userId, mode) {
       await withLock(userId, async () => {
         if (await deps.sessions.activeGameFor(userId)) {
           notify(userId, {
@@ -174,7 +200,7 @@ export function createMatchmakingService(
           return;
         }
 
-        if (await queue.isQueued(userId)) {
+        if (await queues.isQueued(userId)) {
           notify(userId, {
             type: "error",
             message: "Already in matchmaking queue",
@@ -189,7 +215,7 @@ export function createMatchmakingService(
         }
 
         const joinedAtMs = now();
-        const added = await queue.add(userId, rating, joinedAtMs);
+        const added = await queues.add(mode, userId, rating, joinedAtMs);
         if (!added) {
           notify(userId, {
             type: "error",
@@ -202,15 +228,16 @@ export function createMatchmakingService(
           type: "matchmaking:queued",
           rating,
           queuedAtMs: joinedAtMs,
+          mode,
         });
 
-        await tryMatch(userId);
+        await tryMatch(userId, mode);
       });
     },
 
     async cancel(userId) {
       await withLock(userId, async () => {
-        const removed = await queue.remove(userId);
+        const removed = await queues.remove(userId);
         if (!removed) {
           notify(userId, {
             type: "error",
@@ -223,7 +250,7 @@ export function createMatchmakingService(
     },
 
     async onDisconnect(userId) {
-      await queue.remove(userId);
+      await queues.remove(userId);
     },
 
     dispose() {

@@ -87,11 +87,17 @@ export interface MatchPlayerView {
   score: number;
 }
 
+export type SessionPhase = "drafting" | "choosing_tactic" | "playing";
+
 export interface MatchView {
   gameId: string;
   round: number;
   category: StatCategory;
   status: "picking" | "finished" | "forfeited" | "abandoned";
+  mode?: GameMode;
+  phase?: SessionPhase;
+  suddenDeath?: boolean;
+  regulationRounds?: number;
   history: CompletedRound[];
   deadlineMs: number | null;
   frozen: boolean;
@@ -100,6 +106,7 @@ export interface MatchView {
   yourSeat: PlayerSeat;
   you: MatchPlayerView;
   opponent: MatchPlayerView;
+  tactics?: { you: Tactic; opponent: Tactic } | null;
 }
 
 export interface User {
@@ -125,7 +132,19 @@ export type ClientMessage =
       sequence: number;
       cardId: string;
     }
-  | { type: "matchmaking:join" }
+  | {
+      type: "game:draftPick";
+      gameId: string;
+      sequence: number;
+      cardId: string;
+    }
+  | {
+      type: "game:chooseTactic";
+      gameId: string;
+      sequence: number;
+      tactic: Tactic;
+    }
+  | { type: "matchmaking:join"; mode: GameMode }
   | { type: "matchmaking:cancel" };
 
 export type ServerMessage =
@@ -147,15 +166,30 @@ export type ServerMessage =
       winner: PlayerSeat | null;
     }
   | {
+      type: "game:draftState";
+      gameId: string;
+      draft: DraftState;
+      yourPicks: Card[];
+      opponentPickCount: number;
+    }
+  | {
+      type: "game:tacticState";
+      gameId: string;
+      you: Tactic | null;
+      opponentReady: boolean;
+    }
+  | {
       type: "matchmaking:queued";
       rating: number;
       queuedAtMs: number;
+      mode: GameMode;
     }
   | {
       type: "matchmaking:found";
       gameId: string;
       opponentRating: number;
       opponentUsername: string;
+      mode: GameMode;
     }
   | { type: "matchmaking:timeout" }
   | { type: "matchmaking:cancelled" }

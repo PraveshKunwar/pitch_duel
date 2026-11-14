@@ -1,19 +1,38 @@
 import { useState } from "react";
-import type { DraftState } from "../types/game";
+import type { Card as CardType, DraftState, PlayerSeat } from "../types/game";
 import { BackIcon, HomeIcon, NavIconButton } from "./Icons";
 import { Card } from "./Card";
 
 type Props = {
   draft: DraftState;
+  yourSeat?: PlayerSeat;
+  yourPicks?: CardType[];
+  opponentPickCount?: number;
   onPick: (cardId: string) => void;
   onHome: () => void;
   onBack: () => void;
 };
 
-export function DraftBoard({ draft, onPick, onHome, onBack }: Props) {
+export function DraftBoard({
+  draft,
+  yourSeat = "player1",
+  yourPicks,
+  opponentPickCount,
+  onPick,
+  onHome,
+  onBack,
+}: Props) {
   const [selected, setSelected] = useState<string | null>(null);
-  const yourTurn = draft.nextPicker === "player1";
+  const yourTurn = draft.nextPicker === yourSeat;
   const packLabel = `Pack ${draft.packIndex + 1} / ${draft.totalPacks}`;
+  const mine =
+    yourPicks ??
+    (yourSeat === "player1" ? draft.player1Picks : draft.player2Picks);
+  const theirs =
+    opponentPickCount ??
+    (yourSeat === "player1"
+      ? draft.player2Picks.length
+      : draft.player1Picks.length);
 
   return (
     <section className="screen">
@@ -33,7 +52,7 @@ export function DraftBoard({ draft, onPick, onHome, onBack }: Props) {
         </div>
         <span className="pill">
           <span className={`dot ${yourTurn ? "" : "warn"}`} />
-          {yourTurn ? "Your pick" : "CPU picking…"}
+          {yourTurn ? "Your pick" : "Waiting for opponent…"}
         </span>
       </div>
 
@@ -41,13 +60,13 @@ export function DraftBoard({ draft, onPick, onHome, onBack }: Props) {
         <div>
           <small>Your squad</small>
           <h3>
-            {draft.player1Picks.length} / {draft.handSize}
+            {mine.length} / {draft.handSize}
           </h3>
         </div>
         <div>
-          <small>CPU squad</small>
+          <small>Opponent</small>
           <h3>
-            {draft.player2Picks.length} / {draft.handSize}
+            {theirs} / {draft.handSize}
           </h3>
         </div>
       </div>
@@ -57,7 +76,7 @@ export function DraftBoard({ draft, onPick, onHome, onBack }: Props) {
         <p className="muted" style={{ marginTop: 8 }}>
           {yourTurn
             ? "Take the star — or deny your opponent the answer."
-            : "Computer is choosing from this pack."}
+            : "Opponent is choosing from this pack."}
         </p>
         <div className="draft-pack">
           {draft.currentPack.map((card) => (
@@ -85,11 +104,11 @@ export function DraftBoard({ draft, onPick, onHome, onBack }: Props) {
         </button>
       </div>
 
-      {draft.player1Picks.length > 0 ? (
+      {mine.length > 0 ? (
         <div className="draft-yours">
           <h3>Your picks</h3>
           <div className="draft-mini-hand">
-            {draft.player1Picks.map((card) => (
+            {mine.map((card) => (
               <Card key={card.ID} card={card} selectable={false} />
             ))}
           </div>

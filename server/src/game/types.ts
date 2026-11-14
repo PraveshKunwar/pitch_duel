@@ -1,6 +1,10 @@
+import type { GameMode, Tactic } from "./modes";
+
 export type StatCategory = "attack" | "defending" | "passing";
 
 export type Position = "GK" | "DEF" | "MID" | "FWD";
+
+export type PlayerSeat = "player1" | "player2";
 
 export interface Card {
   ID: string;
@@ -12,8 +16,8 @@ export interface Card {
 }
 
 export interface RoundResult {
-  winner: "player1" | "player2";
-  decidedBy: "category" | "secondary" | "coinFlip";
+  winner: PlayerSeat | null;
+  decidedBy: "category" | "secondary" | "coinFlip" | "draw";
 }
 
 export interface CompletedRound {
@@ -30,10 +34,27 @@ export interface PlayerState {
   score: number;
 }
 
+export interface DraftState {
+  packIndex: number;
+  totalPacks: number;
+  currentPack: Card[];
+  picksInPack: number;
+  nextPicker: PlayerSeat;
+  nextPackFirstPicker: PlayerSeat;
+  player1Picks: Card[];
+  player2Picks: Card[];
+  handSize: number;
+}
+
 export interface GameState {
   round: number;
   category: StatCategory;
   status: "picking" | "finished";
+  mode: GameMode;
+  regulationRounds: number;
+  suddenDeath: boolean;
+  reserve: Card[];
+  tactics: { player1: Tactic; player2: Tactic } | null;
   player1: PlayerState;
   player2: PlayerState;
   history: CompletedRound[];

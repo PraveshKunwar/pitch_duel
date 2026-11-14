@@ -1,10 +1,12 @@
-import type { MatchmakingUiStatus, User } from "../types/game";
+import type { GameMode, MatchmakingUiStatus, User } from "../types/game";
+import { MODE_META } from "../game/modes";
 import { formatElo } from "../lib/format";
 import { BackIcon, HomeIcon, NavIconButton } from "./Icons";
 
 type Props = {
   user: User;
   status: MatchmakingUiStatus;
+  mode: GameMode | null;
   opponentUsername: string | null;
   opponentRating: number | null;
   error: string | null;
@@ -16,6 +18,7 @@ type Props = {
 export function Matchmaking({
   user,
   status,
+  mode,
   opponentUsername,
   opponentRating,
   error,
@@ -23,6 +26,8 @@ export function Matchmaking({
   onHome,
   onPlayLocal,
 }: Props) {
+  const modeTitle = mode ? MODE_META[mode].title : "Ranked";
+
   if (status === "found") {
     return (
       <section className="screen">
@@ -32,7 +37,7 @@ export function Matchmaking({
           </NavIconButton>
         </div>
         <div className="panel center-panel">
-          <span className="eyebrow">Opponent found</span>
+          <span className="eyebrow">Opponent found · {modeTitle}</span>
           <h1>A new rivalry.</h1>
           <div className="result-stats">
             <div className="panel">
@@ -45,7 +50,13 @@ export function Matchmaking({
             </div>
           </div>
           <p>Joining the match…</p>
-          <div className="notice">Your five-card hand is being dealt.</div>
+          <div className="notice">
+            {mode === "draft"
+              ? "Draft lobby opening…"
+              : mode === "tactical"
+                ? "Lock your tactic next…"
+                : "Hands are being dealt."}
+          </div>
         </div>
       </section>
     );
@@ -65,7 +76,7 @@ export function Matchmaking({
         </NavIconButton>
       </div>
       <div className="panel center-panel">
-        <span className="eyebrow">Ranked matchmaking</span>
+        <span className="eyebrow">Ranked · {modeTitle}</span>
         <div className="search-ring" aria-hidden="true">
           SCB
         </div>
@@ -83,7 +94,7 @@ export function Matchmaking({
             "You’re out of the queue."
           ) : (
             <>
-              Looking for a player at your level.
+              Searching {modeTitle} only — other modes won’t match you.
               <br />
               Good matchups are worth the wait.
             </>

@@ -1,10 +1,11 @@
-import { Card, RoundResult, StatCategory } from "./types";
+import type { Card, RoundResult, StatCategory } from "./types";
 
 export function resolveRound(
   card1: Card,
   card2: Card,
   category: StatCategory,
   random: () => number = Math.random,
+  allowDraw = false,
 ): RoundResult {
   if (card1[category] < card2[category]) {
     return { winner: "player2", decidedBy: "category" };
@@ -23,6 +24,10 @@ export function resolveRound(
   }
   if (player1Total > player2Total) {
     return { winner: "player1", decidedBy: "secondary" };
+  }
+
+  if (allowDraw) {
+    return { winner: null, decidedBy: "draw" };
   }
 
   return {

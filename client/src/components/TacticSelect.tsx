@@ -4,6 +4,8 @@ import { TACTIC_META } from "../game/modes";
 import { BackIcon, HomeIcon, NavIconButton } from "./Icons";
 
 type Props = {
+  locked?: Tactic | null;
+  opponentReady?: boolean;
   onConfirm: (tactic: Tactic) => void;
   onBack: () => void;
   onHome: () => void;
@@ -16,8 +18,36 @@ const ORDER: Tactic[] = [
   "balanced",
 ];
 
-export function TacticSelect({ onConfirm, onBack, onHome }: Props) {
-  const [selected, setSelected] = useState<Tactic | null>(null);
+export function TacticSelect({
+  locked = null,
+  opponentReady = false,
+  onConfirm,
+  onBack,
+  onHome,
+}: Props) {
+  const [selected, setSelected] = useState<Tactic | null>(locked);
+
+  if (locked) {
+    return (
+      <section className="screen">
+        <div className="nav-actions">
+          <NavIconButton label="Home" onClick={onHome}>
+            <HomeIcon />
+          </NavIconButton>
+        </div>
+        <div className="panel center-panel">
+          <span className="eyebrow">Tactical Battle</span>
+          <h1>Tactic locked.</h1>
+          <p>
+            You chose {TACTIC_META[locked].title}.{" "}
+            {opponentReady
+              ? "Opponent is ready — kickoff imminent."
+              : "Waiting for your opponent to lock in."}
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="screen">
@@ -34,8 +64,7 @@ export function TacticSelect({ onConfirm, onBack, onHome }: Props) {
         <span className="eyebrow">Tactical Battle</span>
         <h1>Lock your approach.</h1>
         <p>
-          Choose in secret. The computer locks one too — revealed after you
-          commit.
+          Choose in secret. Both tactics reveal when the match starts.
         </p>
       </div>
 

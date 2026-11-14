@@ -4,11 +4,12 @@ import { resolveCurrentRound } from "../src/game/resolveCurrentRound";
 import { submitPick } from "../src/game/submitPick";
 import type { GameState, StatCategory } from "../src/game/types";
 import { flatCard } from "./helpers/cards";
+import { withClassicMode } from "./helpers/gameState";
 
 const order: StatCategory[] = ["attack", "defending", "passing"];
 
 function play(rounds: number): GameState {
-  let state: GameState = {
+  let state: GameState = withClassicMode({
     round: 1,
     category: "attack",
     status: "picking",
@@ -25,7 +26,7 @@ function play(rounds: number): GameState {
       score: 0,
     },
     history: [],
-  };
+  });
   for (let round = 1; round <= rounds; round += 1) {
     state = submitPick(state, "player1", state.player1.hand[0].ID);
     state = submitPick(state, "player2", state.player2.hand[0].ID);
@@ -83,10 +84,10 @@ describe("summarizeMatch", () => {
     expect(() => summarizeMatch(play(4))).toThrow(/not finished/);
   });
 
-  it("refuses a finished game with missing rounds", () => {
+  it("refuses a finished game with no decisive rounds", () => {
     const state = play(5);
     expect(() =>
-      summarizeMatch({ ...state, history: state.history.slice(0, 4) }),
-    ).toThrow(/5 rounds/);
+      summarizeMatch({ ...state, history: [] }),
+    ).toThrow(/at least one round/);
   });
 });

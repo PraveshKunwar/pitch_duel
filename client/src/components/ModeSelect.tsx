@@ -3,6 +3,7 @@ import { MODE_META } from "../game/modes";
 import { BackIcon, HomeIcon, NavIconButton } from "./Icons";
 
 type Props = {
+  context: "local" | "ranked";
   onSelect: (mode: GameMode) => void;
   onBack: () => void;
   onHome: () => void;
@@ -10,7 +11,7 @@ type Props = {
 
 const ORDER: GameMode[] = ["classic", "draft", "sudden_death", "tactical"];
 
-export function ModeSelect({ onSelect, onBack, onHome }: Props) {
+export function ModeSelect({ context, onSelect, onBack, onHome }: Props) {
   return (
     <section className="screen">
       <div className="nav-actions">
@@ -23,9 +24,15 @@ export function ModeSelect({ onSelect, onBack, onHome }: Props) {
       </div>
 
       <div className="heading">
-        <span className="eyebrow">Local practice</span>
+        <span className="eyebrow">
+          {context === "ranked" ? "Ranked matchmaking" : "Local practice"}
+        </span>
         <h1>Pick your rules.</h1>
-        <p>Four ways to duel the computer. Ranked stays classic.</p>
+        <p>
+          {context === "ranked"
+            ? "You’ll only be matched with players searching the same mode."
+            : "Four ways to duel the computer."}
+        </p>
       </div>
 
       <div className="mode-grid">
@@ -38,7 +45,9 @@ export function ModeSelect({ onSelect, onBack, onHome }: Props) {
               className="mode-card"
               onClick={() => onSelect(mode)}
             >
-              <span className="eyebrow">{meta.rounds} rounds · {meta.handSize} cards</span>
+              <span className="eyebrow">
+                {meta.rounds} rounds · {meta.handSize} cards
+              </span>
               <h2>{meta.title}</h2>
               <p>{meta.tagline}</p>
               <small className="mode-twist">{meta.twist}</small>

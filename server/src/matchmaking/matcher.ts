@@ -1,3 +1,4 @@
+import type { GameMode } from "../game/modes";
 import type { RankedQueue } from "./queue";
 import {
   allowedRatingDelta,
@@ -15,6 +16,7 @@ export async function findAndClaimOpponent(
   queue: RankedQueue,
   seekerId: string,
   nowMs: number,
+  mode: GameMode,
   config: MatchmakingConfig = DEFAULT_MATCHMAKING_CONFIG,
 ): Promise<MatchAttempt> {
   const seeker = await queue.get(seekerId);
@@ -50,6 +52,7 @@ export async function findAndClaimOpponent(
       player2UserId,
       player1Rating,
       player2Rating,
+      mode,
     },
     seekerMissing: false,
   };

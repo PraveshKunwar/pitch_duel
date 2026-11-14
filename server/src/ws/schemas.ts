@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  gameModeSchema,
   matchmakingCancelSchema,
   matchmakingJoinSchema,
 } from "../matchmaking/schemas";
@@ -17,9 +18,25 @@ export const gamePickSchema = z.object({
   cardId: z.string().min(1),
 });
 
+export const gameDraftPickSchema = z.object({
+  type: z.literal("game:draftPick"),
+  gameId: z.string().min(1),
+  sequence: z.number().int().positive(),
+  cardId: z.string().min(1),
+});
+
+export const gameChooseTacticSchema = z.object({
+  type: z.literal("game:chooseTactic"),
+  gameId: z.string().min(1),
+  sequence: z.number().int().positive(),
+  tactic: z.enum(["attacking", "defensive", "possession", "balanced"]),
+});
+
 export const clientMessageSchema = z.discriminatedUnion("type", [
   gameJoinSchema,
   gamePickSchema,
+  gameDraftPickSchema,
+  gameChooseTacticSchema,
   matchmakingJoinSchema,
   matchmakingCancelSchema,
 ]);
@@ -33,3 +50,5 @@ export function parseClientMessage(data: unknown): ParsedClientMessage {
 export function safeParseClientMessage(data: unknown) {
   return clientMessageSchema.safeParse(data);
 }
+
+void gameModeSchema;

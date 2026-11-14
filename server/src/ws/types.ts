@@ -1,5 +1,13 @@
-import type { CompletedRound, PlayerState, StatCategory } from "../game/types";
+import type { GameMode, Tactic } from "../game/modes";
+import type {
+  Card,
+  CompletedRound,
+  DraftState,
+  PlayerState,
+  StatCategory,
+} from "../game/types";
 import type { WebSocket } from "ws";
+import type { SessionPhase } from "./gameSessions";
 
 export type ClientMessage =
   | {
@@ -13,7 +21,19 @@ export type ClientMessage =
       sequence: number;
       cardId: string;
     }
-  | { type: "matchmaking:join" }
+  | {
+      type: "game:draftPick";
+      gameId: string;
+      sequence: number;
+      cardId: string;
+    }
+  | {
+      type: "game:chooseTactic";
+      gameId: string;
+      sequence: number;
+      tactic: Tactic;
+    }
+  | { type: "matchmaking:join"; mode: GameMode }
   | { type: "matchmaking:cancel" };
 
 export interface MatchPlayerView {
@@ -28,6 +48,10 @@ export interface MatchView {
   round: number;
   category: StatCategory;
   status: "picking" | "finished" | "forfeited" | "abandoned";
+  mode: GameMode;
+  phase: SessionPhase;
+  suddenDeath: boolean;
+  regulationRounds: number;
   history: CompletedRound[];
   deadlineMs: number | null;
   frozen: boolean;
@@ -36,6 +60,7 @@ export interface MatchView {
   yourSeat: "player1" | "player2";
   you: MatchPlayerView;
   opponent: MatchPlayerView;
+  tactics: { you: Tactic; opponent: Tactic } | null;
 }
 
 export type ServerMessage =
@@ -57,15 +82,30 @@ export type ServerMessage =
       winner: "player1" | "player2" | null;
     }
   | {
+      type: "game:draftState";
+      gameId: string;
+      draft: DraftState;
+      yourPicks: Card[];
+      opponentPickCount: number;
+    }
+  | {
+      type: "game:tacticState";
+      gameId: string;
+      you: Tactic | null;
+      opponentReady: boolean;
+    }
+  | {
       type: "matchmaking:queued";
       rating: number;
       queuedAtMs: number;
+      mode: GameMode;
     }
   | {
       type: "matchmaking:found";
       gameId: string;
       opponentRating: number;
       opponentUsername: string;
+      mode: GameMode;
     }
   | { type: "matchmaking:timeout" }
   | { type: "matchmaking:cancelled" }

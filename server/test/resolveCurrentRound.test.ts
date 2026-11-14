@@ -19,6 +19,11 @@ function game(round = 1): GameState {
     round,
     category: "attack",
     status: "picking",
+    mode: "classic",
+    regulationRounds: 5,
+    suddenDeath: false,
+    reserve: [],
+    tactics: null,
     player1: {
       hand: [card("a", 80), card("b", 10)],
       selectedCardId: null,
