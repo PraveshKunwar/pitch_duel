@@ -2,7 +2,7 @@
 
 Requires Node 22+ and Docker.
 
-<video src="demo.mp4" width="320" height="240" controls></video>
+<iframe width="560" height="315" src="https://www.youtube.com/embed/video-id" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 ## Run locally
 
 ```bash
